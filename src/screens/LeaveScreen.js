@@ -4,9 +4,11 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialIcons } from '@expo/vector-icons';
 import { getPage } from '../api';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
@@ -18,7 +20,7 @@ const STATUS_META = {
   canceled: { color: colors.muted, label: 'Dibatalkan' },
 };
 
-export default function LeaveScreen() {
+export default function LeaveScreen({ onBack }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -52,7 +54,13 @@ export default function LeaveScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Cuti</Text>
+      <View style={styles.topbar}>
+        <TouchableOpacity style={styles.backBtn} onPress={onBack}>
+          <MaterialIcons name="arrow-back" size={22} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.title}>Cuti</Text>
+        <View style={styles.backBtnPlaceholder} />
+      </View>
 
       {balance ? (
         <LinearGradient
@@ -130,7 +138,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
   },
   balanceCard: {
@@ -152,6 +160,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'normal',
     color: 'rgba(255,255,255,0.9)',
+  },
+  topbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  backBtnPlaceholder: {
+    width: 40,
   },
   list: {
     gap: 10,

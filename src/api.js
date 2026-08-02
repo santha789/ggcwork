@@ -61,6 +61,21 @@ function parseDataPage(html) {
   }
 }
 
+function parseLocation(headers) {
+  if (!headers) return null;
+  const lines = headers.split(/\r?\n/);
+  for (const line of lines) {
+    const idx = line.indexOf(':');
+    if (idx < 0) continue;
+    const name = line.slice(0, idx).trim().toLowerCase();
+    if (name === 'location') {
+      const loc = line.slice(idx + 1).trim();
+      if (loc) return loc;
+    }
+  }
+  return null;
+}
+
 function request(method, path, body, extraHeaders) {
   return new Promise((resolve, reject) => {
     const attempt = (retry) => {
@@ -127,12 +142,30 @@ export async function login(email, password) {
 
   let page = parseDataPage(res.text);
   if (!page && (res.status === 302 || res.status === 301)) {
-    const dash = await request('GET', '/dashboard');
-    page = parseDataPage(dash.text);
+    let target = '/dashboard';
+    const loc = parseLocation(res.headers);
+    if (loc) target = loc;
+    const dash = await request('GET', target);
+    if (!parseDataPage(dash.text) && dash.status === 302) {
+      const loc2 = parseLocation(dash.headers);
+      if (loc2) {
+        const next = await request('GET', loc2);
+        page = parseDataPage(next.text);
+      }
+    } else {
+      page = parseDataPage(dash.text);
+    }
   }
 
   if (page && page.component === 'Dashboard') {
     return page.props;
+  }
+
+  if (page && page.component === 'Auth/ChangePassword') {
+    const err = new Error('change-password');
+    err.needsPasswordChange = true;
+    err.props = page.props;
+    throw err;
   }
 
   // Masih di halaman login berarti gagal / validasi error.
@@ -160,6 +193,41 @@ export async function login(email, password) {
   );
 }
 
+export async function changePassword(current, password) {
+  const res = await request('POST', '/change-password', {
+    current_password: current,
+    password,
+    password_confirmation: password,
+  });
+
+  let page = parseDataPage(res.text);
+  if (!page && (res.status === 302 || res.status === 301)) {
+    const dash = await request('GET', '/dashboard');
+    page = parseDataPage(dash.text);
+  }
+
+  if (page && page.component === 'Dashboard') {
+    return page.props;
+  }
+
+  if (page && page.component === 'Auth/ChangePassword') {
+    const errs = page.props?.errors || {};
+    const flash = page.props?.flash || {};
+    const msg =
+      (errs.current_password && errs.current_password[0]) ||
+      (errs.password && errs.password[0]) ||
+      flash.error ||
+      'Ganti password gagal. Periksa kembali.';
+    throw new Error(msg);
+  }
+
+  if (res.status === 419) {
+    throw new Error('CSRF mismatch (419). Restart app lalu coba lagi.');
+  }
+
+  throw new Error('Ganti password gagal (status ' + res.status + ').');
+}
+
 export async function getPage(path) {
   const res = await request('GET', path);
   if (res.status === 419) {
@@ -174,6 +242,39 @@ export async function getPage(path) {
   }
   return page.props;
 }
+
+function absoluteLocation(loc) {
+  if (!loc) return null;
+  if (loc.startsWith('http://') || loc.startsWith('https://')) {
+    return loc.replace(/^https?:\/\/[^/]+/, '');
+  }
+  return loc;
+}
+
+export async function submitPage(method, path, body) {
+  const res = await request(method, path, body || {});
+  if (res.status === 419) {
+    throw new Error('Sesi berakhir (419). Silakan keluar dan login ulang.');
+  }
+  if (res.status === 0) {
+    throw new Error('Sesi berakhir. Silakan login ulang.');
+  }
+  let page = parseDataPage(res.text);
+  if (!page && (res.status === 302 || res.status === 301)) {
+    const target = absoluteLocation(parseLocation(res.headers));
+    if (target) {
+      const follow = await request('GET', target);
+      page = parseDataPage(follow.text);
+    }
+  }
+  if (!page) {
+    throw new Error('Server tidak merespons dengan benar. Coba lagi.');
+  }
+  return page.props;
+}
+
+export const postPage = (path, body) => submitPage('POST', path, body);
+export const deletePage = (path) => submitPage('DELETE', path);
 
 export async function logout() {
   try {

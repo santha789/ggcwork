@@ -1,51 +1,59 @@
 import { useState } from 'react';
 import {
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { login } from '../api';
-import { colors, APP_VERSION } from '../theme';
+import { MaterialIcons } from '@expo/vector-icons';
+import { changePassword } from '../api';
+import { colors } from '../theme';
 import { PasswordInput } from '../components';
-import ChangePasswordScreen from './ChangePasswordScreen';
 
-export default function LoginScreen({ onLogin }) {
-  const [email, setEmail] = useState('');
+export default function ChangePasswordScreen({ onDone, onBack, fromProfile }) {
+  const [current, setCurrent] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [needChange, setNeedChange] = useState(false);
+  const [success, setSuccess] = useState('');
 
   async function submit() {
-    if (!email || !password) {
-      setError('Isi email dan password.');
+    if (!current || !password) {
+      setError('Isi password saat ini dan password baru.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password baru minimal 8 karakter.');
+      return;
+    }
+    if (password !== confirm) {
+      setError('Konfirmasi password tidak cocok.');
       return;
     }
     setLoading(true);
     setError('');
+    setSuccess('');
     try {
-      const props = await login(email.trim(), password);
-      onLogin(props);
-    } catch (e) {
-      if (e.needsPasswordChange) {
-        setNeedChange(true);
+      const props = await changePassword(current, password);
+      setSuccess('Kata sandi berhasil diperbarui.');
+      setCurrent('');
+      setPassword('');
+      setConfirm('');
+      if (fromProfile && onBack) {
+        setTimeout(onBack, 1200);
       } else {
-        setError(e.message || 'Login gagal.');
+        onDone(props);
       }
+    } catch (e) {
+      setError(e.message || 'Ganti password gagal.');
     } finally {
       setLoading(false);
     }
-  }
-
-  if (needChange) {
-    return <ChangePasswordScreen onDone={onLogin} />;
   }
 
   return (
@@ -63,36 +71,42 @@ export default function LoginScreen({ onLogin }) {
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.logoWrap}>
-            <Image
-              source={require('../../assets/ggclink-logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-          </View>
-          <Text style={styles.title}>GGC Work</Text>
-          <Text style={styles.subtitle}>APLIKASI KARYAWAN</Text>
+          {fromProfile && onBack ? (
+            <TouchableOpacity style={styles.backBtn} onPress={onBack}>
+              <MaterialIcons name="arrow-back" size={22} color="#fff" />
+            </TouchableOpacity>
+          ) : null}
+          <Text style={styles.title}>
+            {fromProfile ? 'Ganti Kata Sandi' : 'Ubah Kata Sandi'}
+          </Text>
+          <Text style={styles.subtitle}>
+            {fromProfile
+              ? 'Perbarui kata sandi akun kamu. Pastikan kata sandi baru mudah diingat dan aman.'
+              : 'Sebelum masuk, kamu perlu mengganti kata sandi bawaan dengan kata sandi baru.'}
+          </Text>
 
           <View style={styles.card}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="nama@email.com"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoCorrect={false}
+            <Text style={styles.label}>Kata Sandi Saat Ini</Text>
+            <PasswordInput
+              value={current}
+              onChangeText={setCurrent}
+              placeholder="••••••••"
             />
-            <Text style={styles.label}>Password</Text>
+            <Text style={styles.label}>Kata Sandi Baru</Text>
             <PasswordInput
               value={password}
               onChangeText={setPassword}
-              placeholder="••••••••"
+              placeholder="Minimal 8 karakter"
+            />
+            <Text style={styles.label}>Konfirmasi Kata Sandi Baru</Text>
+            <PasswordInput
+              value={confirm}
+              onChangeText={setConfirm}
+              placeholder="Ulangi kata sandi baru"
             />
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
+            {success ? <Text style={styles.success}>{success}</Text> : null}
 
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
@@ -107,13 +121,15 @@ export default function LoginScreen({ onLogin }) {
                 style={styles.buttonGrad}
               >
                 <Text style={styles.buttonText}>
-                  {loading ? 'Masuk...' : 'Masuk'}
+                  {loading
+                    ? 'Menyimpan...'
+                    : fromProfile
+                    ? 'Simpan Perubahan'
+                    : 'Simpan & Masuk'}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
-
-          <Text style={styles.footer}>GGCLINK Group © 2026 · v{APP_VERSION}</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </LinearGradient>
@@ -132,28 +148,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  logoWrap: {
+  backBtn: {
+    alignSelf: 'flex-start',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
-    marginBottom: 8,
-  },
-  logo: {
-    width: 220,
-    height: 86,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    marginBottom: 16,
   },
   title: {
     color: '#fff',
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: 'bold',
     textAlign: 'center',
-    letterSpacing: 1,
   },
   subtitle: {
     color: colors.accentLight,
     textAlign: 'center',
-    marginBottom: 28,
-    letterSpacing: 2,
-    fontSize: 12,
-    fontWeight: '600',
+    marginTop: 8,
+    marginBottom: 24,
+    fontSize: 13,
+    lineHeight: 19,
   },
   card: {
     backgroundColor: colors.card,
@@ -182,6 +201,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
   },
+  success: {
+    color: colors.green,
+    marginTop: 8,
+    fontSize: 12,
+  },
   button: {
     borderRadius: 12,
     marginTop: 16,
@@ -198,11 +222,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
-  },
-  footer: {
-    color: colors.muted,
-    textAlign: 'center',
-    marginTop: 28,
-    fontSize: 12,
   },
 });

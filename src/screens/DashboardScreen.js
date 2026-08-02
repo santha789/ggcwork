@@ -12,7 +12,6 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { getPage } from '../api';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
-import { computeNotifications } from '../notifications';
 
 function todayLabel() {
   const d = new Date();
@@ -20,119 +19,146 @@ function todayLabel() {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
+    year: 'numeric',
   });
 }
 
-function Shortcut({ label, value, icon, color, onPress }) {
+function contractInfo(profile) {
+  if (!profile) return null;
+  const contracts = profile.contracts || [];
+  const active = contracts.find((c) => c.status === 'active') || contracts[0];
+  const endDate = active?.end_date || profile.end_date;
+  if (!endDate) return null;
+
+  const end = new Date(endDate + 'T00:00:00');
+  const now = new Date();
+  const daysLeft = Math.max(
+    0,
+    Math.round((end - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000)
+  );
+
+  let color = colors.green;
+  let label = 'MASIH LAMA';
+  if (daysLeft <= 7) {
+    color = colors.red;
+    label = 'SEGERA BERAKHIR';
+  } else if (daysLeft <= 30) {
+    color = colors.yellow;
+    label = 'KURANG DARI 30 HARI';
+  }
+
+  const endFmt = end.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  return {
+    number: active?.contract_number || '',
+    endDate,
+    endFmt,
+    daysLeft,
+    color,
+    label,
+  };
+}
+
+function computeMyStats(attData) {
+  const month = attData.month || new Date().getMonth() + 1;
+  const year = attData.year || new Date().getFullYear();
+  const daysInMonth = attData.daysInMonth || 31;
+  const myId = attData.myId;
+
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  const attByDate = {};
+  (attData.attendances[String(myId)] || []).forEach((a) => {
+    attByDate[a.date] = a;
+  });
+  const rosterByDate = {};
+  (attData.rosters[String(myId)] || []).forEach((r) => {
+    rosterByDate[r.date] = r;
+  });
+
+  let scheduled = 0;
+  let hadir = 0;
+  let telat = 0;
+  let alpha = 0;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    if (date > todayStr) break;
+    const roster = rosterByDate[date];
+    if (roster && (roster.is_day_off || !roster.shift_id)) continue;
+    const att = attByDate[date];
+    if (date === todayStr && !att) continue;
+    scheduled += 1;
+    const status = att?.status;
+    if (status === 'TAP' || status === 'Hadir' || status === 'Telat' || status === 'TAM') {
+      hadir += 1;
+      if ((att?.late_minutes || 0) > 0) telat += 1;
+    } else if (date < todayStr) {
+      alpha += 1;
+    }
+  }
+
+  const pct = scheduled > 0 ? Math.round((hadir / scheduled) * 100) : 0;
+  return { month, year, scheduled, hadir, telat, alpha, pct };
+}
+
+function QuickCircle({ label, value, icon, color, onPress }) {
   return (
     <TouchableOpacity
-      style={styles.shortcut}
+      style={styles.quickItem}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={styles.shortcutTop}>
-        <View style={[styles.shortcutIcon, { backgroundColor: color + '22' }]}>
-          <MaterialIcons name={icon} size={24} color={color} />
-        </View>
-        {value !== null && value !== undefined ? (
-          <View style={[styles.shortcutBadge, { backgroundColor: color }]}>
-            <Text style={styles.shortcutBadgeText}>{value}</Text>
+      <View style={[styles.quickIcon, { backgroundColor: color + '22' }]}>
+        <MaterialIcons name={icon} size={24} color={color} />
+        {value !== null && value !== undefined && value > 0 ? (
+          <View style={[styles.quickBadge, { backgroundColor: color }]}>
+            <Text style={styles.quickBadgeText}>
+              {value > 99 ? '99+' : value}
+            </Text>
           </View>
         ) : null}
       </View>
-      <Text style={styles.shortcutLabel}>{label}</Text>
-      <MaterialIcons
-        name="arrow-forward-ios"
-        size={12}
-        color={colors.muted}
-        style={styles.shortcutArrow}
-      />
+      <Text style={styles.quickLabel}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
-function Collapse({ title, count, color, children }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <View style={styles.section}>
-      <TouchableOpacity
-        style={styles.sectionHeader}
-        onPress={() => setOpen(!open)}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.sectionDot, { backgroundColor: color }]} />
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {typeof count === 'number' && count > 0 ? (
-          <View style={[styles.sectionBadge, { backgroundColor: color + '22' }]}>
-            <Text style={[styles.sectionBadgeText, { color }]}>{count}</Text>
-          </View>
-        ) : null}
-        <MaterialIcons
-          name={open ? 'expand-less' : 'expand-more'}
-          size={20}
-          color={colors.muted}
-        />
-      </TouchableOpacity>
-      {open ? <View style={styles.sectionBody}>{children}</View> : null}
-    </View>
-  );
-}
-
-function PersonRow({ p, extra, color, rightLabel }) {
-  return (
-    <View style={styles.row}>
-      <View style={[styles.avatar, { backgroundColor: color + '22' }]}>
-        <Text style={[styles.avatarText, { color }]}>
-          {p.fullname ? p.fullname.slice(0, 2).toUpperCase() : '??'}
-        </Text>
-      </View>
-      <View style={styles.rowBody}>
-        <Text style={styles.rowName}>{p.fullname}</Text>
-        <Text style={styles.rowSub} numberOfLines={1}>
-          {p.position} · {p.sub_division || p.division}
-        </Text>
-      </View>
-      <View style={styles.rowRight}>
-        <Text style={[styles.rowRightVal, { color }]}>{extra}</Text>
-        {rightLabel ? (
-          <Text style={styles.rowRightLabel}>{rightLabel}</Text>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-export default function DashboardScreen({ initial, onRefresh, onNavigate }) {
-  const [data, setData] = useState(initial || null);
+export default function DashboardScreen({ user, initial, onNavigate, onOpenAttendance, onOpenShift, onOpenPayroll, onOpenLeave, onOpenPerformance }) {
+  const [dash, setDash] = useState(initial || null);
+  const [attData, setAttData] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    if (onRefresh) {
-      try {
-        await onRefresh();
-        setError('');
-      } catch (e) {
-        setError(e.message);
-      }
-      return;
-    }
     try {
-      const props = await getPage('/dashboard');
-      setData(props);
+      const [d, a, p] = await Promise.all([
+        getPage('/dashboard'),
+        getPage('/attendance/summary'),
+        getPage('/profile'),
+      ]);
+      setDash(d);
+      setAttData({ ...a, myId: user?.id });
+      setProfile(p.userProfile || null);
       setError('');
     } catch (e) {
       setError(e.message);
     }
-  }, [onRefresh]);
+  }, [user]);
 
   useEffect(() => {
-    if (initial) setData(initial);
+    if (initial) setDash(initial);
   }, [initial]);
 
   useEffect(() => {
-    if (!data) load();
-  }, [data, load]);
+    if (!dash || !attData) load();
+  }, [dash, attData, load]);
 
   async function refresh() {
     setRefreshing(true);
@@ -141,17 +167,11 @@ export default function DashboardScreen({ initial, onRefresh, onNavigate }) {
   }
 
   if (error) return <Error message={error} onRetry={load} />;
-  if (!data) return <Loading />;
+  if (!dash || !attData) return <Loading />;
 
-  const s = data.stats || {};
-  const pendingLeaves = data.pendingLeaves || [];
-  const notifCount = computeNotifications(data).length;
-
-  const hadir = s.hadir_today ?? 0;
-  const telat = s.telat_today ?? 0;
-  const absen = s.absent_today ?? 0;
-  const total = s.total_employees ?? 0;
-  const hadirPct = total > 0 ? Math.round((hadir / total) * 100) : 0;
+  const s = computeMyStats(attData);
+  const pendingLeaves = dash.pendingLeaves || [];
+  const kontrak = contractInfo(profile);
 
   return (
     <ScrollView
@@ -161,110 +181,120 @@ export default function DashboardScreen({ initial, onRefresh, onNavigate }) {
       }
     >
       <LinearGradient
-        colors={['#1d4ed8', '#4f46e5']}
+        colors={['#151d31', '#1e2a44']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.hero}
+        style={styles.attCard}
       >
-        <Text style={styles.heroDate}>{todayLabel()}</Text>
-        <Text style={styles.heroTitle}>Selamat datang! 👋</Text>
-        <Text style={styles.heroSub}>
-          {hadir} dari {total} karyawan sudah hadir ({hadirPct}%)
-        </Text>
-        <View style={styles.heroBar}>
-          <View style={[styles.heroBarFill, { width: `${hadirPct}%` }]} />
+        <View style={styles.attTop}>
+          <View style={styles.attInfo}>
+            <Text style={styles.attLabel}>
+              {todayLabel()}
+            </Text>
+            <Text style={styles.attValue}>{s.pct}%</Text>
+            <Text style={styles.attSub}>
+              {s.hadir} hadir dari {s.scheduled} hari kerja
+            </Text>
+          </View>
+          <View style={[styles.attPill, { backgroundColor: colors.emerald + '22' }]}>
+            <Text style={[styles.attPillText, { color: colors.emerald }]}>
+              {s.pct >= 80 ? 'BAIK' : s.pct >= 60 ? 'CUKUP' : 'KURANG'}
+            </Text>
+          </View>
         </View>
+        <View style={styles.heroBar}>
+          <View style={[styles.heroBarFill, { width: `${s.pct}%` }]} />
+        </View>
+        <View style={styles.attRow}>
+          <View style={styles.attStat}>
+            <Text style={[styles.attStatVal, { color: colors.green }]}>{s.hadir}</Text>
+            <Text style={styles.attStatLabel}>Hadir</Text>
+          </View>
+          <View style={styles.attStat}>
+            <Text style={[styles.attStatVal, { color: colors.yellow }]}>{s.telat}</Text>
+            <Text style={styles.attStatLabel}>Telat</Text>
+          </View>
+          <View style={styles.attStat}>
+            <Text style={[styles.attStatVal, { color: colors.red }]}>{s.alpha}</Text>
+            <Text style={styles.attStatLabel}>Alpha</Text>
+          </View>
+        </View>
+        {kontrak && (
+          <View style={styles.contractRow}>
+            <View style={[styles.contractIcon, { backgroundColor: kontrak.color + '22' }]}>
+              <MaterialIcons name="event" size={18} color={kontrak.color} />
+            </View>
+            <View style={styles.contractBody}>
+              <Text style={styles.contractTitle}>
+                Kontrak berakhir {kontrak.endFmt}
+              </Text>
+              <Text style={styles.contractSub}>
+                {kontrak.number ? kontrak.number + ' · ' : ''}
+                {kontrak.label}
+              </Text>
+            </View>
+            <View style={[styles.contractBadge, { backgroundColor: kontrak.color + '22' }]}>
+              <Text style={[styles.contractBadgeText, { color: kontrak.color }]}>
+                {kontrak.daysLeft} hari
+              </Text>
+            </View>
+          </View>
+        )}
       </LinearGradient>
 
       <Text style={styles.sectionHead}>Menu Cepat</Text>
-      <View style={styles.shortcuts}>
-        <Shortcut
+      <View style={styles.quickCard}>
+        <QuickCircle
           label="Absensi"
-          value={hadir}
+          value={s.hadir}
           icon="event-available"
           color={colors.emerald}
-          onPress={() => onNavigate && onNavigate('attendance')}
+          onPress={onOpenAttendance}
         />
-        <Shortcut
+        <QuickCircle
+          label="Jadwal Shift"
+          icon="schedule"
+          color={colors.yellow}
+          onPress={onOpenShift}
+        />
+        <QuickCircle
+          label="Slip Gaji"
+          icon="receipt-long"
+          color={colors.green}
+          onPress={onOpenPayroll}
+        />
+        <QuickCircle
           label="Cuti"
           value={pendingLeaves.length}
           icon="flight-takeoff"
           color={colors.accentLight}
-          onPress={() => onNavigate && onNavigate('leave')}
+          onPress={onOpenLeave}
         />
-        <Shortcut
-          label="Karyawan"
-          value={total}
-          icon="people"
+        <QuickCircle
+          label="Performa"
+          icon="emoji-events"
+          color={colors.yellow}
+          onPress={onOpenPerformance}
+        />
+        <QuickCircle
+          label="Profil"
+          icon="person"
           color={colors.indigo}
-          onPress={() => onNavigate && onNavigate('employees')}
+          onPress={() => onNavigate && onNavigate('profile')}
         />
-        <Shortcut
-          label="Notifikasi"
-          value={notifCount}
-          icon="notifications"
-          color={colors.pink}
-          onPress={() => onNavigate && onNavigate('notifications')}
+        <QuickCircle
+          label="Chat"
+          icon="forum"
+          color={colors.emerald}
+          onPress={() => onNavigate && onNavigate('chat')}
+        />
+        <QuickCircle
+          label="Curhat"
+          icon="groups"
+          color={colors.purple}
+          onPress={() => onNavigate && onNavigate('curhat')}
         />
       </View>
-
-      <Text style={styles.sectionHead}>Kabar Terkini</Text>
-      <Collapse
-        title="Baru Saja Hadir"
-        count={(data.hadirList || []).length}
-        color={colors.green}
-      >
-        {(data.hadirList || []).map((p) => (
-          <PersonRow
-            key={p.id}
-            p={p}
-            extra={p.clock_in || '-'}
-            color={colors.green}
-            rightLabel="Hadir"
-          />
-        ))}
-        {!(data.hadirList || []).length && (
-          <Text style={styles.empty}>Belum ada yang hadir</Text>
-        )}
-      </Collapse>
-
-      <Collapse
-        title="Terlambat"
-        count={(data.telatList || []).length}
-        color={colors.yellow}
-      >
-        {(data.telatList || []).map((p) => (
-          <PersonRow
-            key={p.id}
-            p={p}
-            extra={p.clock_in || '-'}
-            color={colors.yellow}
-            rightLabel="Telat"
-          />
-        ))}
-        {!(data.telatList || []).length && (
-          <Text style={styles.empty}>Tidak ada yang terlambat</Text>
-        )}
-      </Collapse>
-
-      <Collapse
-        title="Belum Hadir"
-        count={(data.absentList || []).length}
-        color={colors.red}
-      >
-        {(data.absentList || []).map((p) => (
-          <PersonRow
-            key={p.id}
-            p={p}
-            extra="—"
-            color={colors.red}
-            rightLabel="Belum"
-          />
-        ))}
-        {!(data.absentList || []).length && (
-          <Text style={styles.empty}>Semua sudah hadir</Text>
-        )}
-      </Collapse>
     </ScrollView>
   );
 }
@@ -275,42 +305,42 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingBottom: 32,
   },
-  hero: {
-    borderRadius: 22,
-    padding: 20,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+  contractIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  heroDate: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
+  contractBody: {
+    flex: 1,
+    gap: 2,
   },
-  heroTitle: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  heroSub: {
-    color: 'rgba(255,255,255,0.85)',
+  contractTitle: {
+    color: colors.text,
     fontSize: 13,
-    marginTop: 4,
+    fontWeight: '700',
   },
-  heroBar: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    marginTop: 14,
-    overflow: 'hidden',
+  contractBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
   },
-  heroBarFill: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.emerald,
+  contractBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  contractSub: {
+    color: colors.muted,
+    fontSize: 11,
+  },
+  contractRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 12,
   },
   sectionHead: {
     color: colors.muted,
@@ -320,138 +350,124 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: 8,
   },
+  attCard: {
+    borderRadius: 20,
+    padding: 18,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  attTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  attInfo: {
+    flex: 1,
+  },
+  attLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  attValue: {
+    color: colors.text,
+    fontSize: 34,
+    fontWeight: 'bold',
+  },
+  attSub: {
+    color: colors.muted,
+    fontSize: 12,
+  },
+  attPill: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  attPillText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  heroBar: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.cardAlt,
+    overflow: 'hidden',
+  },
+  heroBarFill: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.emerald,
+  },
+  attRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  attStat: {
+    flex: 1,
+    backgroundColor: colors.cardAlt,
+    borderRadius: 12,
+    padding: 10,
+    alignItems: 'center',
+    gap: 2,
+  },
+  attStatVal: {
+    fontWeight: 'bold',
+    fontSize: 18,
+  },
+  attStatLabel: {
+    color: colors.muted,
+    fontSize: 10,
+  },
   shortcuts: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
   },
-  shortcut: {
-    width: '48%',
-    flexGrow: 1,
+  quickCard: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     backgroundColor: colors.card,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
-    gap: 8,
-  },
-  shortcutTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  shortcutIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shortcutBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  shortcutBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  shortcutLabel: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  shortcutArrow: {
-    position: 'absolute',
-    right: 10,
-    bottom: 12,
-  },
-  section: {
-    backgroundColor: colors.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  sectionDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontWeight: 'bold',
-    fontSize: 14,
-    flex: 1,
-  },
-  sectionBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  sectionBadgeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  sectionBody: {
     padding: 16,
-    paddingTop: 0,
-    gap: 12,
+    paddingBottom: 14,
+    rowGap: 14,
   },
-  row: {
-    flexDirection: 'row',
+  quickItem: {
+    width: '25%',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+  quickIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
+  quickBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  quickBadgeText: {
+    color: '#fff',
+    fontSize: 10,
     fontWeight: 'bold',
-    fontSize: 13,
   },
-  rowBody: {
-    flex: 1,
-  },
-  rowName: {
+  quickLabel: {
     color: colors.text,
     fontWeight: '600',
-  },
-  rowSub: {
-    color: colors.muted,
     fontSize: 11,
-    marginTop: 1,
-  },
-  rowRight: {
-    alignItems: 'flex-end',
-  },
-  rowRightVal: {
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  rowRightLabel: {
-    color: colors.muted,
-    fontSize: 10,
-  },
-  empty: {
-    color: colors.muted,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 8,
   },
 });

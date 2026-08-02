@@ -4,43 +4,48 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { getPage } from '../api';
 import { Loading, Error } from '../components';
 import { computeNotifications } from '../notifications';
 import { colors } from '../theme';
 
-const TYPE_COLOR = {
-  birthday: colors.pink,
-  contract: colors.yellow,
+const TYPE_META = {
+  birthday: { color: colors.pink, icon: 'cake' },
+  contract: { color: colors.yellow, icon: 'event' },
+  curhat: { color: colors.purple, icon: 'forum' },
+  chat: { color: colors.emerald, icon: 'chat-bubble' },
 };
 
-function NotifCard({ n }) {
-  const color = TYPE_COLOR[n.type];
+function NotifCard({ n, onPress }) {
+  const meta = TYPE_META[n.type] || TYPE_META.curhat;
+  const color = meta.color;
   return (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => onPress && onPress(n)}
+      activeOpacity={0.7}
+    >
       <View style={[styles.icon, { backgroundColor: color + '22' }]}>
-        <MaterialIcons
-          name={n.type === 'birthday' ? 'cake' : 'event'}
-          size={22}
-          color={color}
-        />
+        <MaterialIcons name={meta.icon} size={22} color={color} />
       </View>
       <View style={styles.body}>
         <Text style={styles.title}>{n.title}</Text>
         <Text style={styles.message}>{n.message}</Text>
       </View>
-      <View style={[styles.dayBadge, { backgroundColor: color + '22' }]}>
-        <Text style={[styles.dayText, { color }]}>{n.day}</Text>
+      <View style={styles.cardRight}>
+        <View style={[styles.dayBadge, { backgroundColor: color + '22' }]}>
+          <Text style={[styles.dayText, { color }]}>{n.day}</Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={18} color={colors.muted} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-export default function NotificationsScreen({ initial, onRefresh }) {
-  const [data, setData] = useState(initial || null);
+export default function NotificationsScreen({ dashboard, profile, posts, rooms, lastSeen, myId, onMarkAllSeen, onOpen, onRefresh }) {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -52,24 +57,31 @@ export default function NotificationsScreen({ initial, onRefresh }) {
       } catch (e) {
         setError(e.message);
       }
-      return;
-    }
-    try {
-      const props = await getPage('/dashboard');
-      setData(props);
-      setError('');
-    } catch (e) {
-      setError(e.message);
     }
   }, [onRefresh]);
 
   useEffect(() => {
-    if (initial) setData(initial);
-  }, [initial]);
+    if (!dashboard) load();
+  }, [dashboard, load]);
 
+  const notifs = dashboard
+    ? computeNotifications({
+        dashboard,
+        profile,
+        posts,
+        rooms,
+        lastSeen,
+        myId,
+      })
+    : [];
+
+  const idsKey = notifs.map((n) => n.id).join('|');
   useEffect(() => {
-    if (!data) load();
-  }, [data, load]);
+    if (notifs.length && onMarkAllSeen) {
+      onMarkAllSeen(notifs.map((n) => n.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
 
   async function refresh() {
     setRefreshing(true);
@@ -78,9 +90,14 @@ export default function NotificationsScreen({ initial, onRefresh }) {
   }
 
   if (error) return <Error message={error} onRetry={load} />;
-  if (!data) return <Loading />;
+  if (!dashboard) return <Loading />;
 
-  const notifs = computeNotifications(data);
+  const groups = {
+    birthday: notifs.filter((n) => n.type === 'birthday').length,
+    contract: notifs.filter((n) => n.type === 'contract').length,
+    curhat: notifs.filter((n) => n.type === 'curhat').length,
+    chat: notifs.filter((n) => n.type === 'chat').length,
+  };
 
   return (
     <ScrollView
@@ -90,23 +107,43 @@ export default function NotificationsScreen({ initial, onRefresh }) {
       }
     >
       <View style={styles.heading}>
-        <Text style={styles.headingTitle}>Notifikasi Pengingat</Text>
+        <Text style={styles.headingTitle}>Notifikasi</Text>
         <Text style={styles.headingSub}>
           {notifs.length
-            ? `${notifs.length} pengingat aktif hari ini`
-            : 'Tidak ada pengingat untuk saat ini'}
+            ? `${notifs.length} notifikasi aktif`
+            : 'Tidak ada notifikasi untuk saat ini'}
         </Text>
       </View>
+
+      {Object.entries(groups).some(([, v]) => v > 0) ? (
+        <View style={styles.chips}>
+          {Object.entries(groups)
+            .filter(([, v]) => v > 0)
+            .map(([k, v]) => (
+              <View key={k} style={styles.chip}>
+                <MaterialIcons
+                  name={TYPE_META[k].icon}
+                  size={14}
+                  color={TYPE_META[k].color}
+                />
+                <Text style={[styles.chipText, { color: TYPE_META[k].color }]}>
+                  {v} {k === 'birthday' ? 'Ulang Tahun' : k}
+                </Text>
+              </View>
+            ))}
+        </View>
+      ) : null}
 
       {notifs.length === 0 ? (
         <View style={styles.emptyCard}>
           <MaterialIcons name="notifications-none" size={44} color={colors.muted} />
           <Text style={styles.emptyText}>
-            Semua aman. Tidak ada ulang tahun atau kontrak yang perlu diingatkan.
+            Semua aman. Tidak ada pengingat ulang tahun, kontrak, curhat, atau
+            pesan baru.
           </Text>
         </View>
       ) : (
-        notifs.map((n) => <NotifCard key={n.id} n={n} />)
+        notifs.map((n) => <NotifCard key={n.id} n={n} onPress={onOpen} />)
       )}
     </ScrollView>
   );
@@ -130,6 +167,27 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     marginTop: 2,
+  },
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  chipText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   card: {
     backgroundColor: colors.card,
@@ -166,6 +224,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  cardRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   dayText: {
     fontSize: 11,

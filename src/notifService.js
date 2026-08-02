@@ -67,7 +67,6 @@ export async function syncReminders(props) {
     await ensureChannel();
     const desired = buildSchedules(props);
     const desiredKeys = new Set(desired.map((d) => d.key));
-
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     const stale = scheduled
       .filter((n) => n.content?.data?.kind === 'reminder')
