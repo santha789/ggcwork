@@ -6,17 +6,66 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0b1120"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ggclink.ggcwork",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Aplikasi menggunakan lokasi untuk memverifikasi kehadiran absen sesuai area kantor.",
+        "NSCameraUsageDescription": "Aplikasi menggunakan kamera untuk mengambil foto selfie saat absen dan verifikasi kehadiran.",
+        "NSPhotoLibraryUsageDescription": "Aplikasi membutuhkan akses galeri untuk menyimpan slip gaji dan berbagi dokumen."
+      }
     },
     "android": {
+      "package": "com.ggclink.ggcwork",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0f172a",
-        "foregroundImage": "./assets/adaptive-icon.png"
-      }
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/adaptive-icon-bg.png",
+        "monochromeImage": "./assets/adaptive-icon-mono.png"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Izinkan GGC Work mengakses lokasi untuk verifikasi absen di area kantor."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Izinkan GGC Work mengakses kamera untuk foto selfie saat absen."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2563eb"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ggcwork"
+      }
     }
   }
 }
