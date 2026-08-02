@@ -36,7 +36,11 @@
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "VIBRATE"
+        "VIBRATE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -64,8 +68,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "ggcwork"
+        "projectId": "401c38e2-72e5-494b-b241-0fbf1c63a3bf"
       }
-    }
+    },
+    "owner": "santhakill"
   }
 }
