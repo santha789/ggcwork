@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# expo
+.expo/
+expo.log
+dist/
+web-build/
+*.tsbuildinfo
+
+# environment
+.env
+.env.local
+
+# logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS
+.DS_Store
+Thumbs.db
