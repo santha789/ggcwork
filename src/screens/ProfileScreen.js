@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { colors } from '../theme';
+import { colors, APP_VERSION } from '../theme';
 
 function InfoRow({ icon, label, value }) {
   return (
@@ -136,6 +136,8 @@ export default function ProfileScreen({ user, onChangePassword, onLogout }) {
         <MaterialIcons name="logout" size={18} color={colors.red} />
         <Text style={styles.logoutText}>Keluar</Text>
       </TouchableOpacity>
+
+      <Text style={styles.version}>GGC Work v{APP_VERSION}</Text>
     </ScrollView>
   );
 }
@@ -291,5 +293,12 @@ const styles = StyleSheet.create({
     color: colors.red,
     fontWeight: 'bold',
     fontSize: 15,
+  },
+  version: {
+    color: colors.muted,
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 14,
+    letterSpacing: 0.3,
   },
 });

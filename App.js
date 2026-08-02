@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -25,8 +24,9 @@ import CurhatScreen from './src/screens/CurhatScreen';
 import PerformanceScreen from './src/screens/PerformanceScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import PlaceholderScreen from './src/screens/PlaceholderScreen';
 import { logout, getPage } from './src/api';
-import { colors, APP_VERSION } from './src/theme';
+import { colors } from './src/theme';
 import { computeNotifications } from './src/notifications';
 import { loadLastSeen, saveLastSeen } from './src/notifStore';
 import { requestNotifPermission, syncReminders } from './src/notifService';
@@ -158,12 +158,6 @@ function Main() {
   const notifCount = notifList.filter((n) => !seenSet.has(n.id)).length;
   const greeting =
     hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 19 ? 'Selamat sore' : 'Selamat malam';
-  const todayLabel = new Date().toLocaleDateString('id-ID', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
   const initials = (user.fullname || user.name || 'G')
     .split(' ')
     .slice(0, 2)
@@ -238,6 +232,46 @@ function Main() {
     if (subScreen === 'performance') {
       return <PerformanceScreen onBack={() => setSubScreen(null)} />;
     }
+    if (subScreen === 'asset') {
+      return (
+        <PlaceholderScreen
+          title="Asset"
+          icon="inventory-2"
+          description="Daftar aset perusahaan yang dipinjamkan kepadamu akan tampil di sini."
+          onBack={() => setSubScreen(null)}
+        />
+      );
+    }
+    if (subScreen === 'poin') {
+      return (
+        <PlaceholderScreen
+          title="Poin"
+          icon="stars"
+          description="Kumpulan poinmu akan tampil di sini. Setiap aktivitas baik akan menghasilkan poin."
+          onBack={() => setSubScreen(null)}
+        />
+      );
+    }
+    if (subScreen === 'tagihan') {
+      return (
+        <PlaceholderScreen
+          title="Tagihan"
+          icon="receipt"
+          description="Rincian tagihan utang perusahaan yang dipotong dari gaji akan tampil di sini."
+          onBack={() => setSubScreen(null)}
+        />
+      );
+    }
+    if (subScreen === 'kpi') {
+      return (
+        <PlaceholderScreen
+          title="KPI"
+          icon="track-changes"
+          description="Penilaian kinerja berdasarkan pekerjaanmu akan tampil di sini."
+          onBack={() => setSubScreen(null)}
+        />
+      );
+    }
     if (subScreen === 'notifications') {
       return (
         <NotificationsScreen
@@ -302,6 +336,10 @@ function Main() {
             onOpenPayroll={() => setSubScreen('payroll')}
             onOpenLeave={() => setSubScreen('leave')}
             onOpenPerformance={() => setSubScreen('performance')}
+            onOpenAsset={() => setSubScreen('asset')}
+            onOpenPoin={() => setSubScreen('poin')}
+            onOpenTagihan={() => setSubScreen('tagihan')}
+            onOpenKPI={() => setSubScreen('kpi')}
           />
         );
     }
@@ -324,41 +362,6 @@ function Main() {
       >
         <View style={styles.headerGlow} />
         <View style={styles.headerRow}>
-          <View style={styles.logoWrap}>
-            <Image
-              source={require('./assets/ggclink-logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-            <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v{APP_VERSION}</Text>
-            </View>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.notifBtn}
-              onPress={() => setSubScreen('notifications')}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="notifications" size={20} color="#e0e7ff" />
-              {notifCount > 0 ? (
-                <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>
-                    {notifCount > 9 ? '9+' : notifCount}
-                  </Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
-            <View style={styles.headerDateChip}>
-              <MaterialIcons name="calendar-today" size={12} color={colors.accentLight} />
-              <Text style={styles.headerDateText} numberOfLines={1}>
-                {todayLabel}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.headerRow2}>
           <View style={styles.avatarWrap}>
             <LinearGradient
               colors={[colors.accentLight, colors.accent]}
@@ -387,6 +390,20 @@ function Main() {
               </Text>
             </View>
           </View>
+          <TouchableOpacity
+            style={styles.notifBtn}
+            onPress={() => setSubScreen('notifications')}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="notifications" size={20} color="#e0e7ff" />
+            {notifCount > 0 ? (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>
+                  {notifCount > 9 ? '9+' : notifCount}
+                </Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
         </View>
       </LinearGradient>
 
@@ -468,34 +485,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  logoWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  logo: {
-    width: 84,
-    height: 26,
-  },
-  headerDateChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    maxWidth: 170,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
   notifBtn: {
     width: 34,
@@ -523,16 +513,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 9,
     fontWeight: 'bold',
-  },
-  headerDateText: {
-    color: '#e0e7ff',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  headerRow2: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
   },
   avatarWrap: {
     shadowColor: colors.accentLight,
@@ -580,20 +560,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.3,
     fontWeight: '600',
-  },
-  versionBadge: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  versionText: {
-    color: colors.accentLight,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.5,
   },
   body: {
     flex: 1,

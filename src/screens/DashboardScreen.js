@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Dimensions,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -38,13 +39,10 @@ function contractInfo(profile) {
   );
 
   let color = colors.green;
-  let label = 'MASIH LAMA';
   if (daysLeft <= 7) {
     color = colors.red;
-    label = 'SEGERA BERAKHIR';
   } else if (daysLeft <= 30) {
     color = colors.yellow;
-    label = 'KURANG DARI 30 HARI';
   }
 
   const endFmt = end.toLocaleDateString('id-ID', {
@@ -59,7 +57,6 @@ function contractInfo(profile) {
     endFmt,
     daysLeft,
     color,
-    label,
   };
 }
 
@@ -129,12 +126,15 @@ function QuickCircle({ label, value, icon, color, onPress }) {
   );
 }
 
-export default function DashboardScreen({ user, initial, onNavigate, onOpenAttendance, onOpenShift, onOpenPayroll, onOpenLeave, onOpenPerformance }) {
+export default function DashboardScreen({ user, initial, onNavigate, onOpenAttendance, onOpenShift, onOpenPayroll, onOpenLeave, onOpenPerformance, onOpenAsset, onOpenPoin, onOpenTagihan, onOpenKPI }) {
   const [dash, setDash] = useState(initial || null);
   const [attData, setAttData] = useState(null);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [pageW, setPageW] = useState(0);
+  const [page, setPage] = useState(0);
+  const moreRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -229,8 +229,7 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
                 Kontrak berakhir {kontrak.endFmt}
               </Text>
               <Text style={styles.contractSub}>
-                {kontrak.number ? kontrak.number + ' · ' : ''}
-                {kontrak.label}
+                {kontrak.number || 'Kontrak aktif'}
               </Text>
             </View>
             <View style={[styles.contractBadge, { backgroundColor: kontrak.color + '22' }]}>
@@ -243,57 +242,106 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
       </LinearGradient>
 
       <Text style={styles.sectionHead}>Menu Cepat</Text>
-      <View style={styles.quickCard}>
-        <QuickCircle
-          label="Absensi"
-          value={s.hadir}
-          icon="event-available"
-          color={colors.emerald}
-          onPress={onOpenAttendance}
-        />
-        <QuickCircle
-          label="Jadwal Shift"
-          icon="schedule"
-          color={colors.yellow}
-          onPress={onOpenShift}
-        />
-        <QuickCircle
-          label="Slip Gaji"
-          icon="receipt-long"
-          color={colors.green}
-          onPress={onOpenPayroll}
-        />
-        <QuickCircle
-          label="Cuti"
-          value={pendingLeaves.length}
-          icon="flight-takeoff"
-          color={colors.accentLight}
-          onPress={onOpenLeave}
-        />
-        <QuickCircle
-          label="Performa"
-          icon="emoji-events"
-          color={colors.yellow}
-          onPress={onOpenPerformance}
-        />
-        <QuickCircle
-          label="Profil"
-          icon="person"
-          color={colors.indigo}
-          onPress={() => onNavigate && onNavigate('profile')}
-        />
-        <QuickCircle
-          label="Chat"
-          icon="forum"
-          color={colors.emerald}
-          onPress={() => onNavigate && onNavigate('chat')}
-        />
-        <QuickCircle
-          label="Curhat"
-          icon="groups"
-          color={colors.purple}
-          onPress={() => onNavigate && onNavigate('curhat')}
-        />
+      <View
+        style={styles.quickCard}
+        onLayout={(e) => {
+          const w = e.nativeEvent.layout.width - 2;
+          if (Math.abs(w - pageW) > 1) setPageW(w);
+        }}
+      >
+        <ScrollView
+          ref={moreRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(e) =>
+            setPage(Math.round(e.nativeEvent.contentOffset.x / Math.max(pageW, 1)))
+          }
+        >
+          <View style={[styles.quickPage, { width: pageW || '100%' }]}>
+            <QuickCircle
+              label="Absensi"
+              value={s.hadir}
+              icon="event-available"
+              color={colors.emerald}
+              onPress={onOpenAttendance}
+            />
+            <QuickCircle
+              label="Jadwal Shift"
+              icon="schedule"
+              color={colors.yellow}
+              onPress={onOpenShift}
+            />
+            <QuickCircle
+              label="Slip Gaji"
+              icon="receipt-long"
+              color={colors.green}
+              onPress={onOpenPayroll}
+            />
+            <QuickCircle
+              label="Cuti"
+              value={pendingLeaves.length}
+              icon="flight-takeoff"
+              color={colors.accentLight}
+              onPress={onOpenLeave}
+            />
+            <QuickCircle
+              label="Performa"
+              icon="emoji-events"
+              color={colors.yellow}
+              onPress={onOpenPerformance}
+            />
+            <QuickCircle
+              label="Profil"
+              icon="person"
+              color={colors.indigo}
+              onPress={() => onNavigate && onNavigate('profile')}
+            />
+            <QuickCircle
+              label="Chat"
+              icon="forum"
+              color={colors.emerald}
+              onPress={() => onNavigate && onNavigate('chat')}
+            />
+            <QuickCircle
+              label="Curhat"
+              icon="groups"
+              color={colors.purple}
+              onPress={() => onNavigate && onNavigate('curhat')}
+            />
+          </View>
+          <View style={[styles.quickPage, { width: pageW || '100%' }]}>
+            <QuickCircle
+              label="Asset"
+              icon="inventory-2"
+              color={colors.accentLight}
+              onPress={onOpenAsset}
+            />
+            <QuickCircle
+              label="Poin"
+              icon="stars"
+              color={colors.yellow}
+              onPress={onOpenPoin}
+            />
+            <QuickCircle
+              label="Tagihan"
+              icon="receipt"
+              color={colors.red}
+              onPress={onOpenTagihan}
+            />
+            <QuickCircle
+              label="KPI"
+              icon="track-changes"
+              color={colors.emerald}
+              onPress={onOpenKPI}
+            />
+          </View>
+        </ScrollView>
+      </View>
+
+      <View style={styles.dots}>
+        <View style={[styles.dot, page === 0 && styles.dotActive]} />
+        <View style={[styles.dot, page === 1 && styles.dotActive]} />
       </View>
     </ScrollView>
   );
@@ -427,15 +475,35 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   quickCard: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  quickPage: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     padding: 16,
     paddingBottom: 14,
     rowGap: 14,
+    columnGap: 0,
+  },
+  dots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: -4,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+  },
+  dotActive: {
+    backgroundColor: colors.accentLight,
+    width: 18,
   },
   quickItem: {
     width: '25%',
