@@ -30,6 +30,7 @@ import { colors } from './src/theme';
 import { computeNotifications } from './src/notifications';
 import { loadLastSeen, saveLastSeen } from './src/notifStore';
 import { requestNotifPermission, syncReminders } from './src/notifService';
+import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -60,11 +61,14 @@ function Main() {
   const [chatTarget, setChatTarget] = useState(null);
   const [curhatTarget, setCurhatTarget] = useState(null);
   const pollRef = useRef(null);
+  const tabRef = useRef(tab);
+  const chatLoadedRef = useRef(false);
 
   const loadDashboard = useCallback(async () => {
     try {
       const props = await getPage('/dashboard');
       setDashData(props);
+      saveCachedPage('/dashboard', props);
     } catch (e) {
       // dashboard screen punya error state sendiri
     }
@@ -74,6 +78,7 @@ function Main() {
     try {
       const props = await getPage('/profile');
       setProfile(props);
+      saveCachedPage('/profile', props);
     } catch (e) {
       // ignore
     }
@@ -83,6 +88,7 @@ function Main() {
     try {
       const props = await getPage('/social-feed');
       setPosts((props.posts && props.posts.data) || []);
+      saveCachedPage('/social-feed', props);
     } catch (e) {
       // ignore
     }
@@ -92,6 +98,7 @@ function Main() {
     try {
       const props = await getPage('/chat');
       setRooms(props.rooms || []);
+      saveCachedPage('/chat', props);
     } catch (e) {
       // ignore
     }
@@ -103,13 +110,20 @@ function Main() {
 
   useEffect(() => {
     if (user) {
+      // 1) Tampilkan data dari cache dulu supaya dashboard instan.
+      getCachedPage('/dashboard').then((d) => d && setDashData(d));
+      getCachedPage('/profile').then((p) => p && setProfile(p));
+      getCachedPage('/social-feed').then((s) => {
+        if (s && s.posts && s.posts.data) setPosts(s.posts.data);
+      });
+      // 2) Fetch fresh di background.
       loadDashboard();
       loadProfile();
       loadSocial();
-      loadChat();
+      tabRef.current = tab;
       pollRef.current = setInterval(() => {
         loadSocial();
-        loadChat();
+        if (tabRef.current === 'chat' || tabRef.current === 'curhat') loadChat();
       }, 30000);
     }
     return () => {
@@ -119,6 +133,16 @@ function Main() {
       }
     };
   }, [user, loadDashboard, loadProfile, loadSocial, loadChat]);
+
+  tabRef.current = tab;
+
+  // Lazy-load chat saat tab Chat/Curhat pertama kali dibuka.
+  useEffect(() => {
+    if (user && (tab === 'chat' || tab === 'curhat')) {
+      chatLoadedRef.current = true;
+      loadChat();
+    }
+  }, [user, tab, loadChat]);
 
   useEffect(() => {
     if (user && dashData) {
@@ -171,12 +195,14 @@ function Main() {
     } catch (e) {
       // tetap lanjut keluar
     }
+    clearPageCache();
     setUser(null);
     setDashData(null);
     setProfile(null);
     setPosts([]);
     setRooms([]);
     setTab('dashboard');
+    chatLoadedRef.current = false;
   };
 
   const markCurhatRead = () => {
