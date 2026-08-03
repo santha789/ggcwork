@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -19,6 +20,9 @@ import {
   buildPunchPayload,
   sendPunch,
   haversineMeters,
+  apiLogin,
+  getStoredToken,
+  getStoredLoginEmail,
 } from '../attendanceApi';
 
 function clockText() {
@@ -58,6 +62,11 @@ export default function AbsenScreen({ onLoggedOut }) {
   const [locError, setLocError] = useState('');
   const [locating, setLocating] = useState(false);
   const [punching, setPunching] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [connectEmail, setConnectEmail] = useState('');
+  const [connectPassword, setConnectPassword] = useState('');
+  const [connectLoading, setConnectLoading] = useState(false);
+  const [connectError, setConnectError] = useState('');
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -92,6 +101,14 @@ export default function AbsenScreen({ onLoggedOut }) {
   useEffect(() => {
     (async () => {
       try {
+        const token = await getStoredToken();
+        if (!token) {
+          const savedEmail = (await getStoredLoginEmail()) || '';
+          setConnectEmail(savedEmail);
+          setConnectOpen(true);
+          setLoading(false);
+          return;
+        }
         await Promise.all([loadToday(), loadOffices()]);
         setError('');
       } catch (e) {
@@ -99,6 +116,11 @@ export default function AbsenScreen({ onLoggedOut }) {
           Alert.alert('Sesi berakhir', e.message, [{ text: 'OK', onPress: onLoggedOut }]);
         } else {
           setError(e.message);
+          if (e.message && e.message.includes('Sesi absen')) {
+            const savedEmail = (await getStoredLoginEmail()) || '';
+            setConnectEmail(savedEmail);
+            setConnectOpen(true);
+          }
         }
       } finally {
         setLoading(false);
@@ -110,6 +132,26 @@ export default function AbsenScreen({ onLoggedOut }) {
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
+  }
+
+  async function doConnect() {
+    if (!connectEmail || !connectPassword) {
+      setConnectError('Isi email dan password absen.');
+      return;
+    }
+    setConnectLoading(true);
+    setConnectError('');
+    try {
+      await apiLogin(connectEmail.trim(), connectPassword);
+      setConnectOpen(false);
+      setConnectPassword('');
+      setError('');
+      await refresh();
+    } catch (e) {
+      setConnectError(e.message || 'Sambungkan gagal. Periksa email/password.');
+    } finally {
+      setConnectLoading(false);
+    }
   }
 
   const office = today?.office || offices[0] || null;
@@ -227,6 +269,18 @@ export default function AbsenScreen({ onLoggedOut }) {
         <Text style={styles.clock}>{clockText()}</Text>
       </View>
 
+      {connectOpen ? (
+        <ConnectAbsenCard
+          email={connectEmail}
+          setEmail={setConnectEmail}
+          password={connectPassword}
+          setPassword={setConnectPassword}
+          loading={connectLoading}
+          error={connectError}
+          onConnect={doConnect}
+        />
+      ) : null}
+
       {error ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
@@ -284,6 +338,68 @@ function LockedCard({ reason, onRefresh }) {
       <TouchableOpacity style={styles.lockedBtn} onPress={onRefresh}>
         <MaterialIcons name="refresh" size={16} color="#fff" />
         <Text style={styles.lockedBtnText}>Periksa Lagi</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function ConnectAbsenCard({
+  email,
+  setEmail,
+  password,
+  setPassword,
+  loading,
+  error,
+  onConnect,
+}) {
+  return (
+    <View style={[styles.card, styles.connectCard]}>
+      <View style={styles.cardHeader}>
+        <MaterialIcons name="link" size={18} color={colors.accentLight} />
+        <Text style={styles.cardTitle}>Sambungkan Absen</Text>
+      </View>
+      <Text style={styles.muted}>
+        Sesi absen belum terhubung. Masukkan email &amp; password untuk menyambungkan
+        layanan absen.
+      </Text>
+      <Text style={styles.label}>Email</Text>
+      <TextInput
+        style={styles.input}
+        value={email}
+        onChangeText={setEmail}
+        placeholder="nama@email.com"
+        placeholderTextColor={colors.muted}
+        autoCapitalize="none"
+        keyboardType="email-address"
+        autoCorrect={false}
+      />
+      <Text style={styles.label}>Password</Text>
+      <TextInput
+        style={styles.input}
+        value={password}
+        onChangeText={setPassword}
+        placeholder="••••••••"
+        placeholderTextColor={colors.muted}
+        secureTextEntry
+      />
+      {error ? <Text style={styles.connectError}>{error}</Text> : null}
+      <TouchableOpacity
+        style={[styles.connectBtn, loading && styles.punchBtnDisabled]}
+        onPress={onConnect}
+        disabled={loading}
+        activeOpacity={0.85}
+      >
+        <LinearGradient
+          colors={[colors.accentLight, colors.accent]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.connectBtnGrad}
+        >
+          <MaterialIcons name="link" size={20} color="#fff" />
+          <Text style={styles.connectBtnText}>
+            {loading ? 'Menghubungkan...' : 'Sambungkan'}
+          </Text>
+        </LinearGradient>
       </TouchableOpacity>
     </View>
   );
@@ -515,6 +631,44 @@ const styles = StyleSheet.create({
   officeSub: {
     color: colors.muted,
     fontSize: 12,
+  },
+  label: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  input: {
+    backgroundColor: colors.bg,
+    borderRadius: 12,
+    padding: 13,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  connectCard: {
+    gap: 10,
+  },
+  connectError: {
+    color: colors.red,
+    fontSize: 12,
+  },
+  connectBtn: {
+    borderRadius: 12,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  connectBtnGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
+  },
+  connectBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
   },
   muted: {
     color: colors.muted,

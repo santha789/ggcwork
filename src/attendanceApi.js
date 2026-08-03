@@ -8,6 +8,7 @@ import { Platform } from 'react-native';
 const BASE = 'https://hrmggc.ggclinkgroup.com';
 const TOKEN_KEY = '@ggcwork/sanctum-token';
 const DEVICE_NAME_KEY = '@ggcwork/device-name';
+const EMAIL_KEY = '@ggcwork/login-email';
 
 export async function getStoredToken() {
   try {
@@ -157,13 +158,40 @@ export async function sendPunch(payload) {
 }
 
 async function getDeviceName() {
-  const cached = await SecureStore.getItemAsync(DEVICE_NAME_KEY);
-  if (cached) return cached;
-  const name =
-    [Device.manufacturer, Device.modelName].filter(Boolean).join('-') ||
-    (Platform.OS === 'android' ? 'Android-' + (Device.modelName || 'device') : 'Mobile-' + (Device.modelName || 'device'));
-  await SecureStore.setItemAsync(DEVICE_NAME_KEY, name);
+  try {
+    const cached = await SecureStore.getItemAsync(DEVICE_NAME_KEY);
+    if (cached) return cached;
+  } catch (e) {
+    // lanjut hitung manual
+  }
+  let manufacturer = '';
+  let modelName = '';
+  try {
+    manufacturer = Device.manufacturer || '';
+  } catch (e) {}
+  try {
+    modelName = Device.modelName || '';
+  } catch (e) {}
+  const name = [manufacturer, modelName].filter(Boolean).join('-') ||
+    (Platform.OS === 'android' ? 'Android-device' : 'Mobile-device');
+  try {
+    await SecureStore.setItemAsync(DEVICE_NAME_KEY, name);
+  } catch (e) {}
   return name;
+}
+
+export async function storeLoginEmail(email) {
+  try {
+    await SecureStore.setItemAsync(EMAIL_KEY, email);
+  } catch (e) {}
+}
+
+export async function getStoredLoginEmail() {
+  try {
+    return await SecureStore.getItemAsync(EMAIL_KEY);
+  } catch (e) {
+    return null;
+  }
 }
 
 function detectRooted() {

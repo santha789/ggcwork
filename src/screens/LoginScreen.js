@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { login } from '../api';
-import { apiLogin } from '../attendanceApi';
+import { apiLogin, storeLoginEmail } from '../attendanceApi';
 import { colors, APP_VERSION } from '../theme';
 import { PasswordInput } from '../components';
 import ChangePasswordScreen from './ChangePasswordScreen';
@@ -23,6 +23,7 @@ export default function LoginScreen({ onLogin }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [hint, setHint] = useState('');
   const [needChange, setNeedChange] = useState(false);
 
   async function submit() {
@@ -32,16 +33,23 @@ export default function LoginScreen({ onLogin }) {
     }
     setLoading(true);
     setError('');
+    setHint('');
     try {
       // 1. Login web (cookie) untuk fitur lama: dashboard, chat, curhat, dll.
       const props = await login(email.trim(), password);
       // 2. Login API (Sanctum token) untuk absen. Gagal di sini TIDAK
-      //    memblokir masuk, karena absen bisa diperbaiki/di-login ulang
-      //    di halaman absen. Hint error ditampilkan.
+      //    memblokir masuk, karena absen bisa disambungkan lagi di halaman
+      //    absen. Kalau gagal, tampilkan hint agar tidak bingung.
+      await storeLoginEmail(email.trim());
       try {
         await apiLogin(email.trim(), password);
       } catch (apiErr) {
         console.log('apiLogin failed:', apiErr && apiErr.message);
+        setHint(
+          'Kamu berhasil masuk, tapi layanan absen belum tersambung (' +
+            ((apiErr && apiErr.message) || 'gagal') +
+            '). Buka tab Absen untuk menyambungkannya.'
+        );
       }
       onLogin(props);
     } catch (e) {
@@ -104,6 +112,7 @@ export default function LoginScreen({ onLogin }) {
             />
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
+            {hint ? <Text style={styles.hint}>{hint}</Text> : null}
 
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
@@ -192,6 +201,12 @@ const styles = StyleSheet.create({
     color: colors.red,
     marginTop: 8,
     fontSize: 12,
+  },
+  hint: {
+    color: colors.yellow,
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 17,
   },
   button: {
     borderRadius: 12,
