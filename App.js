@@ -298,7 +298,7 @@ function Main() {
     }
     switch (tab) {
       case 'absen':
-        return <AbsenScreen />;
+        return <AbsenScreen onLoggedOut={handleLogout} />;
       case 'chat':
         return (
           <ChatScreen

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { login } from '../api';
+import { apiLogin } from '../attendanceApi';
 import { colors, APP_VERSION } from '../theme';
 import { PasswordInput } from '../components';
 import ChangePasswordScreen from './ChangePasswordScreen';
@@ -31,7 +33,16 @@ export default function LoginScreen({ onLogin }) {
     setLoading(true);
     setError('');
     try {
+      // 1. Login web (cookie) untuk fitur lama: dashboard, chat, curhat, dll.
       const props = await login(email.trim(), password);
+      // 2. Login API (Sanctum token) untuk absen. Gagal di sini TIDAK
+      //    memblokir masuk, karena absen bisa diperbaiki/di-login ulang
+      //    di halaman absen. Hint error ditampilkan.
+      try {
+        await apiLogin(email.trim(), password);
+      } catch (apiErr) {
+        console.log('apiLogin failed:', apiErr && apiErr.message);
+      }
       onLogin(props);
     } catch (e) {
       if (e.needsPasswordChange) {
