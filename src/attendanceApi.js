@@ -29,9 +29,10 @@ async function storageGet(key, asKey) {
 }
 
 async function storageSet(key, asKey, value) {
+  // Expo Go kadang setItemAsync resolve tapi tidak tersimpan (gagal diam-diam).
+  // Jadi selalu tulis ke SecureStore DAN AsyncStorage (mirror), lalu verifikasi.
   try {
     await SecureStore.setItemAsync(key, value);
-    return;
   } catch (e) {
     // lanjut ke AsyncStorage
   }
