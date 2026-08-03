@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
@@ -9,25 +10,55 @@ const BASE = 'https://hrmggc.ggclinkgroup.com';
 const TOKEN_KEY = '@ggcwork/sanctum-token';
 const DEVICE_NAME_KEY = '@ggcwork/device-name';
 const EMAIL_KEY = '@ggcwork/login-email';
+const TOKEN_KEY_AS = '@ggcwork/sanctum-token:as';
+const EMAIL_KEY_AS = '@ggcwork/login-email:as';
+const DEVICE_KEY_AS = '@ggcwork/device-name:as';
 
-export async function getStoredToken() {
+async function storageGet(key, asKey) {
   try {
-    return await SecureStore.getItemAsync(TOKEN_KEY);
+    const v = await SecureStore.getItemAsync(key);
+    if (v !== null) return v;
+  } catch (e) {
+    // fallback ke AsyncStorage
+  }
+  try {
+    return (await AsyncStorage.getItem(asKey)) || null;
   } catch (e) {
     return null;
   }
 }
 
+async function storageSet(key, asKey, value) {
+  try {
+    await SecureStore.setItemAsync(key, value);
+    return;
+  } catch (e) {
+    // lanjut ke AsyncStorage
+  }
+  try {
+    await AsyncStorage.setItem(asKey, value);
+  } catch (e) {}
+}
+
+async function storageDelete(key, asKey) {
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch (e) {}
+  try {
+    await AsyncStorage.removeItem(asKey);
+  } catch (e) {}
+}
+
+export async function getStoredToken() {
+  return storageGet(TOKEN_KEY, TOKEN_KEY_AS);
+}
+
 export async function storeToken(token) {
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
+  await storageSet(TOKEN_KEY, TOKEN_KEY_AS, token);
 }
 
 export async function clearStoredToken() {
-  try {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-  } catch (e) {
-    // ignore
-  }
+  await storageDelete(TOKEN_KEY, TOKEN_KEY_AS);
 }
 
 function jsonRequest(method, path, body, { token, idempotencyKey } = {}) {
@@ -158,12 +189,8 @@ export async function sendPunch(payload) {
 }
 
 async function getDeviceName() {
-  try {
-    const cached = await SecureStore.getItemAsync(DEVICE_NAME_KEY);
-    if (cached) return cached;
-  } catch (e) {
-    // lanjut hitung manual
-  }
+  const cached = await storageGet(DEVICE_NAME_KEY, DEVICE_KEY_AS);
+  if (cached) return cached;
   let manufacturer = '';
   let modelName = '';
   try {
@@ -174,24 +201,16 @@ async function getDeviceName() {
   } catch (e) {}
   const name = [manufacturer, modelName].filter(Boolean).join('-') ||
     (Platform.OS === 'android' ? 'Android-device' : 'Mobile-device');
-  try {
-    await SecureStore.setItemAsync(DEVICE_NAME_KEY, name);
-  } catch (e) {}
+  await storageSet(DEVICE_NAME_KEY, DEVICE_KEY_AS, name);
   return name;
 }
 
 export async function storeLoginEmail(email) {
-  try {
-    await SecureStore.setItemAsync(EMAIL_KEY, email);
-  } catch (e) {}
+  await storageSet(EMAIL_KEY, EMAIL_KEY_AS, email);
 }
 
 export async function getStoredLoginEmail() {
-  try {
-    return await SecureStore.getItemAsync(EMAIL_KEY);
-  } catch (e) {
-    return null;
-  }
+  return storageGet(EMAIL_KEY, EMAIL_KEY_AS);
 }
 
 function detectRooted() {
