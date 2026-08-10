@@ -53,6 +53,9 @@ export default function LoginScreen({ onLogin }) {
       }
       onLogin(props);
     } catch (e) {
+      console.log('LOGIN_DEBUG error=', e);
+      console.log('LOGIN_DEBUG msg=', e && e.message, 'type=', typeof e);
+      console.log('LOGIN_DEBUG stack=', e && e.stack);
       if (e.needsPasswordChange) {
         setNeedChange(true);
       } else {

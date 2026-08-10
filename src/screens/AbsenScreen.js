@@ -51,6 +51,24 @@ function fmtDist(m) {
   return (m / 1000).toFixed(2) + ' km';
 }
 
+function timeToMin(t) {
+  if (!t) return null;
+  const parts = String(t).split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parts[1] ? parseInt(parts[1], 10) : 0;
+  if (Number.isNaN(h)) return null;
+  return h * 60 + m;
+}
+
+function fmtClock(min) {
+  if (min === null || min === undefined || Number.isNaN(min)) return '-';
+  return (
+    String(Math.floor(min / 60)).padStart(2, '0') +
+    ':' +
+    String(min % 60).padStart(2, '0')
+  );
+}
+
 export default function AbsenScreen({ onLoggedOut }) {
   const [now, setNow] = useState(new Date());
   const [today, setToday] = useState(null);
@@ -189,6 +207,12 @@ export default function AbsenScreen({ onLoggedOut }) {
   const punchType = !hasIn ? 'in' : !hasOut ? 'out' : null;
   const locked = today?.punch_lock?.is_locked || false;
 
+  const shift = today?.shift || null;
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const shiftStartMin = shift?.start_time ? timeToMin(shift.start_time) : null;
+  const inOpenMin = shiftStartMin !== null ? shiftStartMin - 120 : null;
+  const inGateOpen = punchType !== 'in' || inOpenMin === null || nowMin >= inOpenMin;
+
   async function doPunch() {
     if (!office) {
       Alert.alert('Info', 'Belum ada kantor aktif yang dikonfigurasi.');
@@ -227,7 +251,7 @@ export default function AbsenScreen({ onLoggedOut }) {
         if (p.lock_status?.action === 'locked') {
           setTimeout(() => refresh(), 600);
         }
-      } else if (res.status === 403) {
+      } else if (res.status === 403 || res.status === 423) {
         await refresh();
         Alert.alert('Terkunci', res.message || 'Fitur absensi terkunci. Hubungi HR/admin.');
       } else if (res.status === 409) {
@@ -307,6 +331,10 @@ export default function AbsenScreen({ onLoggedOut }) {
         <PunchCard
           today={today}
           punchType={punchType}
+          shift={shift}
+          inGateOpen={inGateOpen}
+          inOpenMin={inOpenMin}
+          nowMin={nowMin}
           inside={inside}
           distance={distance}
           radius={office?.radius_m || 100}
@@ -460,20 +488,54 @@ function LocationCard({ locating, locError, distance, radius, inside, onLocate }
   );
 }
 
-function PunchCard({ today, punchType, inside, distance, radius, punching, onPunch }) {
+function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, distance, radius, punching, onPunch }) {
   const attendance = today?.attendance;
   const hasIn = !!attendance?.clock_in;
   const hasOut = !!attendance?.clock_out;
-  const disabled = !punchType || !inside || punching;
+  const gatedIn = punchType === 'in' && !inGateOpen;
+  const disabled = !punchType || !inside || punching || gatedIn;
+  const active = !!punchType && inside && !gatedIn && !punching;
 
-  const action = !punchType
-    ? 'Absen Hari Ini Selesai'
-    : punchType === 'in'
-      ? 'Absen Masuk'
-      : 'Absen Pulang';
+  const action =
+    !punchType
+      ? 'Absensi Selesai'
+      : punchType === 'in'
+        ? 'Absen Masuk'
+        : 'Absen Pulang';
+
+  const icon = !punchType ? 'check' : punchType === 'in' ? 'login' : 'logout';
+
+  const caption = punching
+    ? 'Memproses…'
+    : gatedIn
+      ? 'Terbuka pukul ' + fmtClock(inOpenMin) + ' WIB'
+      : !inside && distance !== null
+        ? 'Di luar radius ' + radius + ' m'
+        : punchType === 'in'
+          ? 'Boleh 2 jam sebelum shift'
+          : punchType === 'out'
+            ? 'Pulang bebas, kapan pun'
+            : 'Semua sudah tercatat';
+
+  const gradColors = active ? [colors.indigo, colors.accent] : [colors.cardAlt, colors.cardAlt];
+  const glyphColor = active ? '#fff' : colors.muted;
+
+  const shiftLabel = shift
+    ? fmtClock(timeToMin(shift.start_time)) + ' – ' + fmtClock(timeToMin(shift.end_time))
+    : null;
 
   return (
     <View style={styles.punchCard}>
+      {shift ? (
+        <View style={styles.shiftRow}>
+          <MaterialIcons name="schedule" size={15} color={colors.accentLight} />
+          <Text style={styles.shiftText}>
+            Shift {shift.name || ''}
+            {shiftLabel ? '  •  ' + shiftLabel : ''}
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.punchTimes}>
         <View style={styles.punchTimeBox}>
           <Text style={styles.punchTimeLabel}>Masuk</Text>
@@ -496,32 +558,35 @@ function PunchCard({ today, punchType, inside, distance, radius, punching, onPun
       </View>
 
       <TouchableOpacity
-        style={[styles.punchBtn, (disabled || punching) && styles.punchBtnDisabled]}
+        style={[styles.punchBtnWrap, disabled && styles.punchBtnWrapDisabled]}
         onPress={onPunch}
         disabled={disabled || punching}
         activeOpacity={0.85}
       >
         <LinearGradient
-          colors={!inside ? [colors.cardAlt, colors.cardAlt] : [colors.green, colors.emerald]}
+          colors={gradColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.punchBtnGrad}
+          style={styles.punchBtnInner}
         >
-          <MaterialIcons
-            name={punchType === 'in' ? 'login' : punchType === 'out' ? 'logout' : 'check'}
-            size={30}
-            color={!inside ? colors.muted : '#fff'}
-          />
-          <Text style={[styles.punchBtnText, { color: !inside ? colors.muted : '#fff' }]}>
-            {punching ? 'Memproses...' : action}
-          </Text>
-          {!inside && distance !== null ? (
-            <Text style={styles.punchBtnSub}>
-              Pindah ke dalam radius {radius} m
-            </Text>
-          ) : (
-            <Text style={styles.punchBtnSub}>Gunakan lokasi GPS real-time</Text>
-          )}
+          <View style={styles.punchBtnRow}>
+            <View style={[styles.punchIcon, !active && styles.punchIconMuted]}>
+              <MaterialIcons name={icon} size={22} color={glyphColor} />
+            </View>
+            <View style={styles.punchBtnLabelWrap}>
+              <Text style={[styles.punchBtnMain, { color: active ? '#fff' : colors.muted }]}>
+                {action}
+              </Text>
+              <Text style={[styles.punchBtnCaption, { color: active ? 'rgba(255,255,255,0.78)' : colors.muted }]}>
+                {caption}
+              </Text>
+            </View>
+            <MaterialIcons
+              name="navigate-next"
+              size={22}
+              color={active ? 'rgba(255,255,255,0.7)' : colors.muted}
+            />
+          </View>
         </LinearGradient>
       </TouchableOpacity>
     </View>
@@ -750,6 +815,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  shiftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  shiftText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
   punchTimes: {
     flexDirection: 'row',
     gap: 10,
@@ -780,25 +855,47 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 10,
   },
-  punchBtn: {
+  punchBtnWrap: {
     borderRadius: 16,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  punchBtnDisabled: {
-    opacity: 0.6,
+  punchBtnWrapDisabled: {
+    opacity: 1,
   },
-  punchBtnGrad: {
+  punchBtnInner: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  punchBtnRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 18,
-    gap: 4,
+    gap: 12,
   },
-  punchBtnText: {
+  punchIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  punchIconMuted: {
+    backgroundColor: colors.cardAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  punchBtnLabelWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  punchBtnMain: {
     fontWeight: 'bold',
-    fontSize: 17,
+    fontSize: 16,
   },
-  punchBtnSub: {
-    fontSize: 11,
-    opacity: 0.8,
+  punchBtnCaption: {
+    fontSize: 11.5,
   },
   logRow: {
     flexDirection: 'row',

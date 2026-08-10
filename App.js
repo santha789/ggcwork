@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import {
   StyleSheet,
   Text,
@@ -25,6 +26,8 @@ import PerformanceScreen from './src/screens/PerformanceScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import PlaceholderScreen from './src/screens/PlaceholderScreen';
+import PoinScreen from './src/screens/PoinScreen';
+import ChangePasswordScreen from './src/screens/ChangePasswordScreen';
 import { logout, getPage } from './src/api';
 import { colors } from './src/theme';
 import { computeNotifications } from './src/notifications';
@@ -63,6 +66,12 @@ function Main() {
   const pollRef = useRef(null);
   const tabRef = useRef(tab);
   const chatLoadedRef = useRef(false);
+
+  useEffect(() => {
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(
+      () => {}
+    );
+  }, []);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -270,10 +279,7 @@ function Main() {
     }
     if (subScreen === 'poin') {
       return (
-        <PlaceholderScreen
-          title="Poin"
-          icon="stars"
-          description="Kumpulan poinmu akan tampil di sini. Setiap aktivitas baik akan menghasilkan poin."
+        <PoinScreen
           onBack={() => setSubScreen(null)}
         />
       );

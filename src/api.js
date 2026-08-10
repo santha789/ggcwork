@@ -142,12 +142,10 @@ export async function login(email, password) {
 
   let page = parseDataPage(res.text);
   if (!page && (res.status === 302 || res.status === 301)) {
-    let target = '/dashboard';
-    const loc = parseLocation(res.headers);
-    if (loc) target = loc;
+    let target = absoluteLocation(parseLocation(res.headers)) || '/dashboard';
     const dash = await request('GET', target);
     if (!parseDataPage(dash.text) && dash.status === 302) {
-      const loc2 = parseLocation(dash.headers);
+      const loc2 = absoluteLocation(parseLocation(dash.headers));
       if (loc2) {
         const next = await request('GET', loc2);
         page = parseDataPage(next.text);
@@ -202,7 +200,7 @@ export async function changePassword(current, password) {
 
   let page = parseDataPage(res.text);
   if (!page && (res.status === 302 || res.status === 301)) {
-    const dash = await request('GET', '/dashboard');
+    const dash = await request('GET', absoluteLocation(parseLocation(res.headers)) || '/dashboard');
     page = parseDataPage(dash.text);
   }
 
