@@ -199,7 +199,10 @@ export default function AbsenScreen({ onLoggedOut }) {
         location.coords.longitude
       )
     : null;
-  const inside = distance !== null && distance <= (office?.radius_m || 100);
+  const allowAnywhere = !!today?.allow_anywhere_punch;
+  const inside = allowAnywhere
+    ? distance !== null
+    : distance !== null && distance <= (office?.radius_m || 100);
 
   const attendance = today?.attendance;
   const hasIn = !!attendance?.clock_in;
@@ -222,7 +225,7 @@ export default function AbsenScreen({ onLoggedOut }) {
       await locate();
       if (!location) return;
     }
-    if (!inside) {
+    if (!inside && !allowAnywhere) {
       Alert.alert(
         'Di luar area kantor',
         'Kamu berada ' + fmtDist(distance) + ' dari kantor. Radius absen ' + (office?.radius_m || 100) + ' m.'
@@ -316,7 +319,7 @@ export default function AbsenScreen({ onLoggedOut }) {
 
       {locked ? <LockedCard reason={today?.punch_lock?.reason} onRefresh={onRefresh} /> : null}
 
-      <OfficeCard office={office} />
+      <OfficeCard office={office} allowAnywhere={allowAnywhere} />
 
       <LocationCard
         locating={locating}
@@ -324,6 +327,7 @@ export default function AbsenScreen({ onLoggedOut }) {
         distance={distance}
         radius={office?.radius_m || 100}
         inside={inside}
+        allowAnywhere={allowAnywhere}
         onLocate={locate}
       />
 
@@ -338,6 +342,7 @@ export default function AbsenScreen({ onLoggedOut }) {
           inside={inside}
           distance={distance}
           radius={office?.radius_m || 100}
+          allowAnywhere={allowAnywhere}
           punching={punching}
           onPunch={doPunch}
         />
@@ -346,7 +351,9 @@ export default function AbsenScreen({ onLoggedOut }) {
       <PunchLogs logs={today?.punch_logs || []} />
 
       <Text style={styles.footnote}>
-        Verifikasi lokasi radius {office?.radius_m || 100} m dari {office?.name || 'kantor'}.
+        {allowAnywhere
+          ? 'Kamu dapat absen dari lokasi mana pun — posisi tetap direkam saat absen.'
+          : 'Verifikasi lokasi radius ' + (office?.radius_m || 100) + ' m dari ' + (office?.name || 'kantor') + '.'}
       </Text>
     </ScrollView>
   );
@@ -433,7 +440,7 @@ function ConnectAbsenCard({
   );
 }
 
-function OfficeCard({ office }) {
+function OfficeCard({ office, allowAnywhere }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -442,13 +449,15 @@ function OfficeCard({ office }) {
       </View>
       <Text style={styles.officeName}>{office?.name || '-'}</Text>
       <Text style={styles.officeSub}>
-        Radius absen {office?.radius_m || 100} m
+        {allowAnywhere
+          ? 'Absen lokasi bebas — dilapangan / mobilisasi'
+          : 'Radius absen ' + (office?.radius_m || 100) + ' m'}
       </Text>
     </View>
   );
 }
 
-function LocationCard({ locating, locError, distance, radius, inside, onLocate }) {
+function LocationCard({ locating, locError, distance, radius, inside, allowAnywhere, onLocate }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -470,7 +479,11 @@ function LocationCard({ locating, locError, distance, radius, inside, onLocate }
               {fmtDist(distance)}
             </Text>
             <Text style={styles.muted}>
-              {inside ? 'Kamu di dalam area absen' : 'Di luar area kantor'}
+              {allowAnywhere
+                ? 'Lokasi direkam saat absen'
+                : inside
+                  ? 'Kamu di dalam area absen'
+                  : 'Di luar area kantor'}
             </Text>
           </View>
           <TouchableOpacity style={styles.smallBtn} onPress={onLocate}>
@@ -488,7 +501,7 @@ function LocationCard({ locating, locError, distance, radius, inside, onLocate }
   );
 }
 
-function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, distance, radius, punching, onPunch }) {
+function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, distance, radius, allowAnywhere, punching, onPunch }) {
   const attendance = today?.attendance;
   const hasIn = !!attendance?.clock_in;
   const hasOut = !!attendance?.clock_out;
@@ -510,7 +523,9 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
     : gatedIn
       ? 'Terbuka pukul ' + fmtClock(inOpenMin) + ' WIB'
       : !inside && distance !== null
-        ? 'Di luar radius ' + radius + ' m'
+        ? allowAnywhere
+          ? 'Absen lokasi bebas'
+          : 'Di luar radius ' + radius + ' m'
         : punchType === 'in'
           ? 'Boleh 2 jam sebelum shift'
           : punchType === 'out'
