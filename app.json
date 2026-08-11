@@ -59,7 +59,8 @@
           "color": "#2563eb"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/removeUnusedPermissions"
     ],
     "extra": {
       "eas": {

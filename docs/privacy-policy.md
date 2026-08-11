@@ -1,7 +1,7 @@
 # Kebijakan Privasi — Aplikasi GGC Work
 
 **Terakhir diperbarui:** 3 Agustus 2026
-**Penerbit:** PT GGC Group (GGCLINK)
+**Penerbit:** PT GGCLINK RETAIL SOLUSINDO
 **Domain:** https://ggclinkgroup.com
 
 ---
@@ -9,7 +9,7 @@
 ## 1. Pendahuluan
 
 Aplikasi **GGC Work** ("Aplikasi") adalah aplikasi internal yang digunakan oleh
-karyawan PT GGC Group untuk keperluan kepegawaian, antara lain: absensi,
+karyawan PT GGCLINK RETAIL SOLUSINDO untuk keperluan kepegawaian, antara lain: absensi,
 pengajuan cuti, jadwal shift, slip gaji, komunikasi antar karyawan (chat &
 curhat), pemantauan aset perusahaan, dan informasi performansi kerja.
 
@@ -82,7 +82,7 @@ Untuk pertanyaan terkait kebijakan privasi atau pengelolaan data, silakan
 hubungi:
 - **Email HR:** hr@ggclinkgroup.com
 - **Website:** https://ggclinkgroup.com
-- **Alamat:** [Alamat kantor PT GGC Group]
+- **Alamat:** Jl. Swadaya No. 1 RT 05/05, Kel. Pakansari, Kec. Cibinong, Kabupaten Bogor
 
 ## 10. Perubahan Kebijakan
 
