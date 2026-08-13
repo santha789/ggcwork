@@ -60,7 +60,16 @@
         }
       ],
       "expo-secure-store",
-      "./plugins/removeUnusedPermissions"
+      "./plugins/removeUnusedPermissions",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
