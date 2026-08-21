@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE = 'https://hrmggc.ggclinkgroup.com';
 const FCM_TOKEN_KEY = '@ggcwork/fcm_token';
+const EAS_PROJECT_ID = '401c38e2-72e5-494b-b241-0fbf1c63a3bf';
 
 let _authHeaders = {};
 
@@ -86,7 +87,7 @@ export async function initSilentPing(userId) {
     await Notifications.requestPermissionsAsync({ alert: false, badge: false, sound: false });
   }
 
-  const tokenData = await Notifications.getExpoPushTokenAsync();
+  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
   if (tokenData?.data) {
     await AsyncStorage.setItem(FCM_TOKEN_KEY, tokenData.data);
   }
@@ -109,7 +110,7 @@ export async function initSilentPing(userId) {
 }
 
 export async function registerFcmTokenToServer(userId) {
-  const tokenData = await Notifications.getExpoPushTokenAsync();
+  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
   if (!tokenData?.data) return;
 
   await AsyncStorage.setItem(FCM_TOKEN_KEY, tokenData.data);

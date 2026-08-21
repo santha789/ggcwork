@@ -198,10 +198,12 @@ function Main() {
   useEffect(() => {
     if (user && dashData) {
       requestNotifPermission().then((granted) => {
-        if (granted) syncReminders({ dashboard: dashData, profile });
+        if (granted) {
+          syncReminders({ dashboard: dashData, profile });
+          initSilentPing(user.id).catch(() => {});
+          registerFcmTokenToServer(user.id).catch(() => {});
+        }
       });
-      initSilentPing(user.id).catch(() => {});
-      registerFcmTokenToServer(user.id).catch(() => {});
     }
   }, [user, dashData, profile]);
 
