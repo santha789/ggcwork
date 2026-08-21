@@ -417,6 +417,7 @@ function Main() {
           <ChatScreen
             user={user}
             target={chatTarget}
+            lastSeen={lastSeen}
             onTargetConsumed={() => setChatTarget(null)}
             onMarkRead={markChatRead}
           />

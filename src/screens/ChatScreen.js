@@ -46,7 +46,7 @@ function Avatar({ user, online, size = 44 }) {
   );
 }
 
-export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetConsumed }) {
+export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetConsumed, lastSeen }) {
   const [data, setData] = useState(null);
   const [activeRoom, setActiveRoom] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -329,6 +329,55 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
       </View>
 
       <ScrollView contentContainerStyle={styles.contactList}>
+        {(data.rooms || []).length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>
+              Chat Terakhir
+            </Text>
+            {data.rooms.map((r) => {
+              const partner = (r.users || [])[0] || {};
+              const isOnline = onlineIds.includes(partner.id) || Boolean(partner.is_online);
+              const lastMsg = r.last_message;
+              const lastSeenTs = lastSeen?.chat?.[r.id];
+              const hasUnread = !lastSeenTs || (lastMsg && new Date(lastMsg.created_at).getTime() > new Date(lastSeenTs).getTime());
+              return (
+                <TouchableOpacity
+                  key={r.id}
+                  style={styles.contact}
+                  onPress={() => {
+                    const otherId = (r.users || []).find((u) => u.id !== me)?.id;
+                    if (otherId) openChat(otherId);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Avatar user={partner} online={isOnline} />
+                  <View style={styles.contactBody}>
+                    <View style={styles.roomRow}>
+                      <Text style={[styles.contactName, hasUnread && styles.boldText]} numberOfLines={1}>
+                        {partner.fullname || r.name}
+                      </Text>
+                      <Text style={styles.roomTime} numberOfLines={1}>
+                        {lastMsg ? fmtTime(lastMsg.created_at) : ''}
+                      </Text>
+                    </View>
+                    <View style={styles.roomRow}>
+                      <Text style={[styles.contactSub, hasUnread && styles.boldSub]} numberOfLines={1}>
+                        {lastMsg
+                          ? (lastMsg.sender_id === me ? 'Kamu: ' : '') + lastMsg.content
+                          : (partner.sub_division?.name || partner.division?.name || 'Mulai chat')}
+                      </Text>
+                      {hasUnread ? (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadBadgeText}>●</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </>
+        )}
         <Text style={styles.sectionLabel}>
           Direktori Karyawan ({filtered.length})
         </Text>
@@ -622,5 +671,38 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: {
     opacity: 0.5,
+  },
+  roomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  roomTime: {
+    color: colors.muted,
+    fontSize: 11,
+    flexShrink: 0,
+  },
+  boldText: {
+    fontWeight: '700',
+    color: colors.text,
+  },
+  boldSub: {
+    fontWeight: '600',
+    color: colors.text,
+  },
+  unreadBadge: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.accent,
+    flexShrink: 0,
+    marginLeft: 6,
+  },
+  unreadBadgeText: {
+    color: '#fff',
+    fontSize: 6,
+    textAlign: 'center',
+    lineHeight: 10,
   },
 });
