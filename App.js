@@ -35,6 +35,8 @@ import { computeNotifications } from './src/notifications';
 import { loadLastSeen, saveLastSeen } from './src/notifStore';
 import { requestNotifPermission, syncReminders } from './src/notifService';
 import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
+import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
+import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -127,6 +129,7 @@ function Main() {
         const props = await getPage('/dashboard');
         if (props && props.auth?.user) {
           setUser(props.auth.user);
+          setAuthHeaders({ 'X-Inertia': 'true' });
           setDashData(props);
           saveCachedPage('/dashboard', props);
           // Load data lain di background
@@ -198,6 +201,8 @@ function Main() {
       requestNotifPermission().then((granted) => {
         if (granted) syncReminders({ dashboard: dashData, profile });
       });
+      initSilentPing(user.id).catch(() => {});
+      registerFcmTokenToServer(user.id).catch(() => {});
     }
   }, [user, dashData, profile]);
 
