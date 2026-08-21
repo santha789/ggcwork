@@ -29,6 +29,7 @@ import NotificationsScreen from './src/screens/NotificationsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import PlaceholderScreen from './src/screens/PlaceholderScreen';
 import PoinScreen from './src/screens/PoinScreen';
+import PengumumanScreen from './src/screens/PengumumanScreen';
 import ChangePasswordScreen from './src/screens/ChangePasswordScreen';
 import { logout, getPage, loadCookieJar } from './src/api';
 import { colors } from './src/theme';
@@ -223,6 +224,10 @@ function Main() {
           setTab('chat');
         }
       }
+      if (data?.action === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'OFFICIAL_ANNOUNCEMENT') {
+        setSubScreen('pengumuman');
+        setTab('dashboard');
+      }
     });
     return () => sub.remove();
   }, [user]);
@@ -412,6 +417,9 @@ function Main() {
         />
       );
     }
+    if (subScreen === 'pengumuman') {
+      return <PengumumanScreen onBack={() => setSubScreen(null)} />;
+    }
     switch (tab) {
       case 'absen':
         return <AbsenScreen onLoggedOut={handleLogout} />;
@@ -457,6 +465,7 @@ function Main() {
             onOpenPoin={() => setSubScreen('poin')}
             onOpenTagihan={() => setSubScreen('tagihan')}
             onOpenKPI={() => setSubScreen('kpi')}
+            onOpenPengumuman={() => setSubScreen('pengumuman')}
           />
         );
     }

@@ -126,7 +126,7 @@ function QuickCircle({ label, value, icon, color, onPress }) {
   );
 }
 
-export default function DashboardScreen({ user, initial, onNavigate, onOpenAttendance, onOpenShift, onOpenPayroll, onOpenLeave, onOpenPerformance, onOpenAsset, onOpenPoin, onOpenTagihan, onOpenKPI }) {
+export default function DashboardScreen({ user, initial, onNavigate, onOpenAttendance, onOpenShift, onOpenPayroll, onOpenLeave, onOpenPerformance, onOpenAsset, onOpenPoin, onOpenTagihan, onOpenKPI, onOpenPengumuman }) {
   const [dash, setDash] = useState(initial || null);
   const [attData, setAttData] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -311,6 +311,12 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
             />
           </View>
           <View style={[styles.quickPage, { width: pageW || '100%' }]}>
+            <QuickCircle
+              label="Pengumuman"
+              icon="campaign"
+              color={colors.red}
+              onPress={onOpenPengumuman}
+            />
             <QuickCircle
               label="Asset"
               icon="inventory-2"

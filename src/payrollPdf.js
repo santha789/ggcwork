@@ -1,41 +1,7 @@
 import * as Print from 'expo-print';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  File,
-  Paths,
-} from 'expo-file-system';
-import {
-  StorageAccessFramework,
-  EncodingType,
-  readAsStringAsync,
-} from 'expo-file-system/legacy';
-
-const DIR_KEY = '@ggcwork/download-dir';
-
-async function getOrRequestDir() {
-  try {
-    const saved = await AsyncStorage.getItem(DIR_KEY);
-    if (saved) {
-      return saved;
-    }
-  } catch (e) {
-    // ignore
-  }
-
-  const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync(
-    StorageAccessFramework.getUriForDirectoryInRoot('Download')
-  );
-  if (!permissions.granted) {
-    throw new Error('Akses folder Download ditolak.');
-  }
-
-  try {
-    await AsyncStorage.setItem(DIR_KEY, permissions.directoryUri);
-  } catch (e) {
-    // ignore
-  }
-  return permissions.directoryUri;
-}
+import { File, Paths } from 'expo-file-system';
+import { EncodingType, readAsStringAsync, makeDirectoryAsync, documentDirectory } from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 
 function fmtRp(v) {
   const n = Number(v);
@@ -243,6 +209,32 @@ function buildSlipHtml(p) {
 </html>`;
 }
 
+async function getDownloadDir() {
+  // Try to get the Download directory directly on Android
+  if (Platform.OS === 'android') {
+    const dl = Paths.download;
+    if (dl) {
+      try {
+        // Ensure the directory exists
+        const info = await new File(dl).exists();
+        if (!info) {
+          await makeDirectoryAsync(dl, { intermediates: true }).catch(() => {});
+        }
+        return dl;
+      } catch (e) {
+        // fallback
+      }
+    }
+    // Fallback: use document directory
+    const dl2 = documentDirectory + 'Download';
+    try {
+      await makeDirectoryAsync(dl2, { intermediates: true }).catch(() => {});
+    } catch (e) {}
+    return dl2;
+  }
+  return documentDirectory;
+}
+
 export async function downloadPayrollPdf(p) {
   const html = buildSlipHtml(p);
   const { uri } = await Print.printToFileAsync({ html });
@@ -250,22 +242,23 @@ export async function downloadPayrollPdf(p) {
   const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
   const filename = `slip-gaji-${p.period_month}-${p.period_year}.pdf`;
 
-  const dirUri = await getOrRequestDir();
-  const fileUri = await StorageAccessFramework.createFileAsync(
-    dirUri,
-    filename,
-    'application/pdf'
-  );
-  await StorageAccessFramework.writeAsStringAsync(fileUri, base64, {
-    encoding: EncodingType.Base64,
-  });
+  const dirUri = await getDownloadDir();
+  const fileUri = `${dirUri}/${filename}`;
 
-  // Bersihkan file sementara dari cache
+  // Write the file directly
+  const f = new File(fileUri);
+  try {
+    await f.write(base64, { encoding: EncodingType.Base64 });
+  } catch (e) {
+    // If direct write fails, try creating the file first
+    const created = await File.createFile(dirUri, filename, true);
+    await created.write(base64, { encoding: EncodingType.Base64 });
+  }
+
+  // Cleanup temp file
   try {
     new File(uri).delete();
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
 
   return { uri: fileUri, filename };
 }
