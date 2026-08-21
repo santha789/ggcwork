@@ -170,35 +170,8 @@ export function buildSchedules({ dashboard, profile }) {
   const out = [];
   const today = startOfDay(new Date());
 
-  const birthdays = dashboard?.birthdayUsers || [];
-  birthdays.forEach((u) => {
-    if (!u.date_of_birth) return;
-    const dob = new Date(u.date_of_birth + 'T00:00:00');
-    const bday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
-    const name = fullname(u);
-
-    const h1 = atHour(new Date(bday.getFullYear(), bday.getMonth(), bday.getDate() - 1), NOTIF_HOUR);
-    if (h1.getTime() > Date.now()) {
-      out.push({
-        key: `bday-${u.id}-H1`,
-        date: h1,
-        title: 'Ulang Tahun Besok 🎂',
-        message: `${name} merayakan ulang tahun besok. Jangan lupa ucapkan selamat!`,
-        type: 'birthday',
-      });
-    }
-
-    const h = atHour(bday, NOTIF_HOUR);
-    if (h.getTime() > Date.now()) {
-      out.push({
-        key: `bday-${u.id}-H`,
-        date: h,
-        title: 'Selamat Ulang Tahun 🎉',
-        message: `${name} berulang tahun hari ini. Kirimkan ucapan selamat!`,
-        type: 'birthday',
-      });
-    }
-  });
+  // Birthday notifications: only show in-app bell list, not as OS push
+  // (OS push duplicates the in-app list and causes 3x notifications)
 
   const userProfile = profile?.userProfile || profile;
   const contracts = userProfile.contracts || profile?.contracts || [];

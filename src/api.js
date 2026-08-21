@@ -1,6 +1,22 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 const BASE = 'https://hrmggc.ggclinkgroup.com';
+const JAR_KEY = '@ggcwork/cookie-jar';
 
 let jar = {};
+
+export async function loadCookieJar() {
+  try {
+    const raw = await AsyncStorage.getItem(JAR_KEY);
+    if (raw) jar = JSON.parse(raw);
+  } catch (e) {}
+}
+
+async function persistCookieJar() {
+  try {
+    await AsyncStorage.setItem(JAR_KEY, JSON.stringify(jar));
+  } catch (e) {}
+}
 
 function saveSetCookies(allHeaders) {
   if (!allHeaders) return;
@@ -19,6 +35,7 @@ function saveSetCookies(allHeaders) {
       if (key) jar[key] = val;
     }
   });
+  persistCookieJar();
 }
 
 function cookieHeader() {
@@ -39,6 +56,7 @@ function parseMetaToken(html) {
 
 function clearJar() {
   jar = {};
+  persistCookieJar();
 }
 
 function decodeHtml(s) {

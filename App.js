@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import {
+  BackHandler,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -28,7 +29,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import PlaceholderScreen from './src/screens/PlaceholderScreen';
 import PoinScreen from './src/screens/PoinScreen';
 import ChangePasswordScreen from './src/screens/ChangePasswordScreen';
-import { logout, getPage } from './src/api';
+import { logout, getPage, loadCookieJar } from './src/api';
 import { colors } from './src/theme';
 import { computeNotifications } from './src/notifications';
 import { loadLastSeen, saveLastSeen } from './src/notifStore';
@@ -63,9 +64,13 @@ function Main() {
   const [lastSeen, setLastSeen] = useState(null);
   const [chatTarget, setChatTarget] = useState(null);
   const [curhatTarget, setCurhatTarget] = useState(null);
+  const [initializing, setInitializing] = useState(true);
   const pollRef = useRef(null);
   const tabRef = useRef(tab);
+  const subScreenRef = useRef(subScreen);
   const chatLoadedRef = useRef(false);
+
+  subScreenRef.current = subScreen;
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(
@@ -114,8 +119,28 @@ function Main() {
   }, []);
 
   useEffect(() => {
-    loadLastSeen().then(setLastSeen);
+    Promise.all([loadLastSeen(), loadCookieJar()]).then(([s]) => {
+      setLastSeen(s);
+      setInitializing(false);
+    });
   }, []);
+
+  // Android back button: go back or exit
+  useEffect(() => {
+    const onBackPress = () => {
+      if (subScreenRef.current) {
+        setSubScreen(null);
+        return true;
+      }
+      if (tab !== 'dashboard') {
+        setTab('dashboard');
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [tab]);
 
   useEffect(() => {
     if (user) {
@@ -171,6 +196,14 @@ function Main() {
       return next;
     });
   }, []);
+
+  if (initializing) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: colors.muted, fontSize: 14 }}>Memuat...</Text>
+      </View>
+    );
+  }
 
   if (!user) {
     return <LoginScreen onLogin={(props) => setUser(props.auth?.user || {})} />;

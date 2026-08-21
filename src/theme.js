@@ -16,7 +16,7 @@ export const colors = {
   pink: '#f472b6',
 };
 
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.1.0';
 
 export function fmtMoney(v) {
   const n = Number(v);
