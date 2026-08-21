@@ -135,6 +135,7 @@ function Main() {
           // Load data lain di background
           getPage('/profile').then((p) => { setProfile(p); saveCachedPage('/profile', p); }).catch(() => {});
           getPage('/social-feed').then((p) => { if (p?.posts?.data) setPosts(p.posts.data); saveCachedPage('/social-feed', p); }).catch(() => {});
+          getPage('/chat').then((p) => { setRooms(p.rooms || []); saveCachedPage('/chat', p); }).catch(() => {});
         }
       } catch (e) {
         // Session expired, tampilkan login
@@ -750,7 +751,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 9,
     fontWeight: 'bold',
-  },
   },
   tabIconActive: {
     backgroundColor: colors.accent + '22',
