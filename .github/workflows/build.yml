@@ -1,4 +1,4 @@
-name: EAS Build & Update
+name: EAS Build
 
 on:
   push:
@@ -6,23 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm install
-      - run: npm install -g eas-cli
-      - run: eas update --branch production --platform android --message "OTA update from CI" --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          CI: true
-
   build:
-    needs: update
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
