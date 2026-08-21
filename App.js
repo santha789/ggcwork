@@ -36,7 +36,6 @@ import { loadLastSeen, saveLastSeen } from './src/notifStore';
 import { requestNotifPermission, syncReminders } from './src/notifService';
 import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
 import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
-import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
