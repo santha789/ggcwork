@@ -241,23 +241,31 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
           }
           renderItem={({ item: msg }) => {
             const mine = msg.user_id === me;
+            const read = !!msg.read_at;
             return (
               <View style={[styles.msgRow, mine ? styles.msgRowMine : styles.msgRowOther]}>
                 <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
-                  <View style={styles.bubbleHead}>
+                  {!mine && (
                     <Text style={styles.bubbleName} numberOfLines={1}>
                       {msg.user?.fullname || 'Karyawan'}
                     </Text>
-                    <Text style={styles.bubbleSub}>
-                      {msg.user?.sub_division?.name || ''}
-                    </Text>
-                  </View>
+                  )}
                   <Text style={[styles.bubbleContent, mine && styles.bubbleContentMine]}>
                     {msg.content}
                   </Text>
-                  <Text style={[styles.bubbleTime, mine && styles.bubbleTimeMine]}>
-                    {fmtTime(msg.created_at)}
-                  </Text>
+                  <View style={[styles.bubbleFooter, mine && styles.bubbleFooterMine]}>
+                    <Text style={[styles.bubbleTime, mine && styles.bubbleTimeMine]}>
+                      {fmtTime(msg.created_at)}
+                    </Text>
+                    {mine ? (
+                      <MaterialIcons
+                        name={read ? 'done-all' : 'done'}
+                        size={15}
+                        color={read ? '#60a5fa' : 'rgba(255,255,255,0.5)'}
+                        style={{ marginLeft: 4 }}
+                      />
+                    ) : null}
+                  </View>
                 </View>
               </View>
             );
@@ -506,6 +514,7 @@ const styles = StyleSheet.create({
   },
   contactBody: {
     flex: 1,
+    marginLeft: 4,
   },
   contactName: {
     color: colors.text,
@@ -514,7 +523,7 @@ const styles = StyleSheet.create({
   },
   contactSub: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 1,
   },
   onlinePill: {
@@ -631,10 +640,15 @@ const styles = StyleSheet.create({
   bubbleContentMine: {
     color: '#fff',
   },
+  bubbleFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 3,
+  },
   bubbleTime: {
     color: colors.muted,
     fontSize: 9,
-    textAlign: 'right',
   },
   bubbleTimeMine: {
     color: 'rgba(255,255,255,0.7)',

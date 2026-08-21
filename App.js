@@ -270,6 +270,8 @@ function Main() {
     : [];
   const seenSet = new Set(lastSeen?.seen || []);
   const notifCount = notifList.filter((n) => !seenSet.has(n.id)).length;
+  const unread = unreadCounts({ posts, rooms, lastSeen, myId: user?.id });
+  const tabBadge = { chat: unread.chat, curhat: unread.curhat };
   const greeting =
     hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 19 ? 'Selamat sore' : 'Selamat malam';
   const initials = (user.fullname || user.name || 'G')
@@ -565,6 +567,13 @@ function Main() {
                   size={22}
                   color={active ? colors.accent : colors.muted}
                 />
+                {tabBadge[t.key] > 0 ? (
+                  <View style={styles.tabBadge}>
+                    <Text style={styles.tabBadgeText}>
+                      {tabBadge[t.key] > 9 ? '9+' : tabBadge[t.key]}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
               <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
                 {t.label}
@@ -723,6 +732,25 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 999,
+    backgroundColor: colors.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  tabBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
   },
   tabIconActive: {
     backgroundColor: colors.accent + '22',
