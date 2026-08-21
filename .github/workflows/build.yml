@@ -13,8 +13,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+      - run: npm install
       - run: npm install -g eas-cli
-      - run: eas update --branch production --platform android --message "OTA update from CI"
+      - run: eas update --branch production --platform android --message "OTA update from CI" --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           CI: true
@@ -27,6 +29,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+      - run: npm install
       - run: npm install -g eas-cli
       - run: EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform android --profile production --non-interactive
         env:
