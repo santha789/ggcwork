@@ -41,6 +41,13 @@ async function ensureChannel() {
       lightColor: '#2563eb',
       sound: 'default',
     });
+    await Notifications.setNotificationChannelAsync('downloads', {
+      name: 'Download File',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      vibrationPattern: [0, 100],
+      lightColor: '#2563eb',
+      sound: null,
+    });
   }
   configured = true;
 }

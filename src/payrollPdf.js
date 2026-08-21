@@ -2,6 +2,11 @@ import * as Print from 'expo-print';
 import { File, Paths } from 'expo-file-system';
 import { EncodingType, readAsStringAsync, makeDirectoryAsync, documentDirectory } from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const DL_FILE_KEY = '@ggcwork/last-download-pdf';
 
 function fmtRp(v) {
   const n = Number(v);
@@ -245,20 +250,49 @@ export async function downloadPayrollPdf(p) {
   const dirUri = await getDownloadDir();
   const fileUri = `${dirUri}/${filename}`;
 
-  // Write the file directly
   const f = new File(fileUri);
   try {
     await f.write(base64, { encoding: EncodingType.Base64 });
   } catch (e) {
-    // If direct write fails, try creating the file first
     const created = await File.createFile(dirUri, filename, true);
     await created.write(base64, { encoding: EncodingType.Base64 });
   }
 
-  // Cleanup temp file
   try {
     new File(uri).delete();
   } catch (e) {}
 
+  // Store file URI for notification tap handler
+  await AsyncStorage.setItem(DL_FILE_KEY, fileUri);
+
+  // Show download-complete notification like a browser
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Download selesai',
+      body: filename,
+      data: { action: 'OPEN_DOWNLOAD', fileUri },
+      sound: false,
+      ...(Platform.OS === 'android' ? { channelId: 'downloads' } : {}),
+    },
+    trigger: null,
+  });
+
   return { uri: fileUri, filename };
+}
+
+export async function openLastDownload() {
+  try {
+    const fileUri = await AsyncStorage.getItem(DL_FILE_KEY);
+    if (!fileUri) return false;
+    const exists = await new File(fileUri).exists();
+    if (!exists) return false;
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/pdf',
+      dialogTitle: 'Buka Slip Gaji',
+      UTI: 'com.adobe.pdf',
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
 }

@@ -36,6 +36,7 @@ import { colors } from './src/theme';
 import { computeNotifications, unreadCounts } from './src/notifications';
 import { loadLastSeen, saveLastSeen } from './src/notifStore';
 import { requestNotifPermission, syncReminders } from './src/notifService';
+import { openLastDownload } from './src/payrollPdf';
 import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
 import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
 
@@ -142,6 +143,14 @@ function Main() {
         // Session expired, tampilkan login
       }
       setInitializing(false);
+
+      // Cold-start: check if user tapped download notification while app was killed
+      Notifications.getLastNotificationResponseAsync().then((resp) => {
+        const d = resp?.notification?.request?.content?.data;
+        if (d?.action === 'OPEN_DOWNLOAD') {
+          openLastDownload();
+        }
+      }).catch(() => {});
     })();
   }, []);
 
@@ -227,6 +236,9 @@ function Main() {
       if (data?.action === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'OFFICIAL_ANNOUNCEMENT') {
         setSubScreen('pengumuman');
         setTab('dashboard');
+      }
+      if (data?.action === 'OPEN_DOWNLOAD') {
+        openLastDownload();
       }
     });
     return () => sub.remove();
