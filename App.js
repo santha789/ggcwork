@@ -119,10 +119,25 @@ function Main() {
   }, []);
 
   useEffect(() => {
-    Promise.all([loadLastSeen(), loadCookieJar()]).then(([s]) => {
+    (async () => {
+      const [s] = await Promise.all([loadLastSeen(), loadCookieJar()]);
       setLastSeen(s);
+      // Coba restore session dari persisted cookies
+      try {
+        const props = await getPage('/dashboard');
+        if (props && props.auth?.user) {
+          setUser(props.auth.user);
+          setDashData(props);
+          saveCachedPage('/dashboard', props);
+          // Load data lain di background
+          getPage('/profile').then((p) => { setProfile(p); saveCachedPage('/profile', p); }).catch(() => {});
+          getPage('/social-feed').then((p) => { if (p?.posts?.data) setPosts(p.posts.data); saveCachedPage('/social-feed', p); }).catch(() => {});
+        }
+      } catch (e) {
+        // Session expired, tampilkan login
+      }
       setInitializing(false);
-    });
+    })();
   }, []);
 
   // Android back button: go back or exit
