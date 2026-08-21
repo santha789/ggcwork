@@ -3,12 +3,23 @@ import { Platform } from 'react-native';
 import { buildSchedules } from './notifications';
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification?.request?.content?.data;
+    if (data?.action === 'PING_LOCATION' || data?.type === 'PING_LOCATION') {
+      return {
+        shouldShowBanner: false,
+        shouldShowList: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      };
+    }
+    return {
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    };
+  },
 });
 
 let configured = false;
@@ -17,10 +28,18 @@ async function ensureChannel() {
   if (configured) return;
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name: 'Pengingat GGC Work',
-      importance: Notifications.AndroidImportance.HIGH,
+      name: 'Notifikasi GGC Work',
+      importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#2563eb',
+      sound: 'default',
+    });
+    await Notifications.setNotificationChannelAsync('chat_messages', {
+      name: 'Pesan Chat GGC Work',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#2563eb',
+      sound: 'default',
     });
   }
   configured = true;

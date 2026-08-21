@@ -13,14 +13,6 @@ export function setAuthHeaders(headers) {
   _authHeaders = headers || {};
 }
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: false,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
-
 async function ensureLocationPermission() {
   const { status } = await Location.getForegroundPermissionsAsync();
   if (status === 'granted') return true;
