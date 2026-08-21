@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import * as Notifications from 'expo-notifications';
 import {
   BackHandler,
   StyleSheet,
@@ -31,7 +32,7 @@ import PoinScreen from './src/screens/PoinScreen';
 import ChangePasswordScreen from './src/screens/ChangePasswordScreen';
 import { logout, getPage, loadCookieJar } from './src/api';
 import { colors } from './src/theme';
-import { computeNotifications } from './src/notifications';
+import { computeNotifications, unreadCounts } from './src/notifications';
 import { loadLastSeen, saveLastSeen } from './src/notifStore';
 import { requestNotifPermission, syncReminders } from './src/notifService';
 import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
@@ -206,6 +207,32 @@ function Main() {
       });
     }
   }, [user, dashData, profile]);
+
+  // Handle notification tap: navigate to chat
+  useEffect(() => {
+    if (!user) return;
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data;
+      if (data?.action === 'CHAT_MESSAGE' || data?.type === 'CHAT_MESSAGE') {
+        const senderId = parseInt(data.sender_id, 10);
+        if (senderId) {
+          setChatTarget(senderId);
+          setCurhatTarget(null);
+          setSubScreen(null);
+          setTab('chat');
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [user]);
+
+  // Badge sync: update OS badge count dari unread
+  useEffect(() => {
+    if (!user) return;
+    const uc = unreadCounts({ posts, rooms, lastSeen, myId: user.id });
+    const total = uc.chat + uc.curhat;
+    Notifications.setBadgeCountAsync(total).catch(() => {});
+  }, [user, rooms, posts, lastSeen]);
 
   const markAllNotifSeen = useCallback((ids) => {
     if (!ids || !ids.length) return;
