@@ -114,7 +114,10 @@ async function multipartRequest(method, path, formData, { token, idempotencyKey 
       body: formData,
     });
   } catch (e) {
-    throw new Error('Tidak dapat terhubung ke server. Periksa koneksi internet.');
+    const detail = (e && (e.message || e.code || e.name)) || 'unknown';
+    const err = new Error('Upload gagal: ' + detail + '. Periksa koneksi.');
+    err.uploadError = e;
+    throw err;
   }
 
   let data = null;
