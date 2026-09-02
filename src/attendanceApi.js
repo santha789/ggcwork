@@ -242,11 +242,13 @@ export async function sendPunch(payload) {
         Object.keys(v).forEach((kk) => {
           const vv = v[kk];
           if (vv !== null && vv !== undefined) {
-            form.append(`device_info[${k}][${kk}]`, String(vv));
+            const val = typeof vv === 'boolean' ? (vv ? '1' : '0') : String(vv);
+            form.append(`device_info[${k}][${kk}]`, val);
           }
         });
       } else {
-        form.append(`device_info[${k}]`, String(v));
+        const val = typeof v === 'boolean' ? (v ? '1' : '0') : String(v);
+        form.append(`device_info[${k}]`, val);
       }
     });
 
