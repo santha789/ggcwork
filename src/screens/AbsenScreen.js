@@ -766,10 +766,13 @@ function CameraModal({ visible, loading, cameraRef, user, now, location, distanc
           <CameraView ref={cameraRef} style={styles.camera} facing="front" />
 
           <View style={styles.cameraInfoOverlay} pointerEvents="none">
+            <View style={styles.cameraWatermarkTag}>
+              <Text style={styles.cameraWatermarkText}>🛡️ GGCLINK GROUP • BUKTI PRESENSI RESMI</Text>
+            </View>
             <View style={styles.cameraInfoRow}>
               <MaterialIcons name="person" size={13} color="#fff" />
               <Text style={styles.cameraInfoText}>
-                {name || '-'}{division ? ' • ' + division : ''}
+                {name || '-'}{user?.employee_id ? ` (NIK: ${user.employee_id})` : ''}{division ? ' • ' + division : ''}
               </Text>
             </View>
             <View style={styles.cameraInfoRow}>
@@ -780,7 +783,7 @@ function CameraModal({ visible, loading, cameraRef, user, now, location, distanc
               <MaterialIcons name="my-location" size={13} color="#fff" />
               <Text style={styles.cameraInfoText}>
                 {coordText}
-                {distance !== null ? ' • ' + fmtDist(distance) + (allowAnywhere ? ' (bebas)' : ' dari kantor') : ''}
+                {distance !== null ? ' • ' + fmtDist(distance) + (allowAnywhere ? ' (Lokasi Bebas)' : ' dari kantor') : ''}
               </Text>
             </View>
             {address ? (
@@ -791,7 +794,7 @@ function CameraModal({ visible, loading, cameraRef, user, now, location, distanc
             ) : null}
             <View style={styles.cameraInfoRow}>
               <MaterialIcons name="business" size={13} color="#fff" />
-              <Text style={styles.cameraInfoText}>{office?.name || ''}</Text>
+              <Text style={styles.cameraInfoText}>{office?.name || 'Kantor Utama'}</Text>
             </View>
           </View>
         </View>
@@ -1211,7 +1214,23 @@ const styles = StyleSheet.create({
     bottom: 0,
     padding: 14,
     gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  cameraWatermarkTag: {
+    backgroundColor: 'rgba(2,132,199,0.4)',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.5)',
+    marginBottom: 2,
+  },
+  cameraWatermarkText: {
+    color: '#38bdf8',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   cameraInfoRow: {
     flexDirection: 'row',
