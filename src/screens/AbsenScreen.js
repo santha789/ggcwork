@@ -253,7 +253,7 @@ export default function AbsenScreen({ onLoggedOut }) {
   const cooldown = getCooldownInfo(actionState, now);
   const cooldownActive = cooldown.inCooldown && punchType === 'out';
 
-  async function doPunch() {
+  async function doPunch(photoUriArg) {
     if (!office) {
       Alert.alert('Info', 'Belum ada kantor aktif yang dikonfigurasi.');
       return;
@@ -272,7 +272,8 @@ export default function AbsenScreen({ onLoggedOut }) {
     if (punching) return;
 
     // Foto selfie sebagai bukti evident wajib diambil di setiap absen.
-    if (!photoUri) {
+    const uri = photoUriArg || photoUri;
+    if (!uri) {
       openCamera();
       return;
     }
@@ -282,7 +283,7 @@ export default function AbsenScreen({ onLoggedOut }) {
       const loc = location || (await getCurrentLocation());
       const payload = await buildPunchPayload(punchType, office, loc, {
         photo: {
-          uri: photoUri,
+          uri: uri,
           name: 'selfie.jpg',
           type: 'image/jpeg',
         },
@@ -358,7 +359,7 @@ export default function AbsenScreen({ onLoggedOut }) {
         'Lanjutkan absen dengan foto bukti ini?',
         [
           { text: 'Ulangi', style: 'cancel', onPress: () => { setPhotoUri(null); setPhotoOpen(true); } },
-          { text: 'Lanjut Absen', onPress: () => doPunch() },
+          { text: 'Lanjut Absen', onPress: () => doPunch(pic.uri) },
         ]
       );
     } catch (e) {
