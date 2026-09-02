@@ -461,6 +461,7 @@ function Main() {
             lastSeen={lastSeen}
             onTargetConsumed={() => setChatTarget(null)}
             onMarkRead={markChatRead}
+            onActiveRoomChange={setInChatRoom}
           />
         );
       case 'curhat':
@@ -501,127 +502,136 @@ function Main() {
     }
   };
 
+  const [inChatRoom, setInChatRoom] = useState(false);
+
   const screen = renderScreen();
 
   const navigateTab = (key) => {
     setSubScreen(null);
     setTab(key);
+    if (key !== 'chat') setInChatRoom(false);
   };
+
+  const hideMainChrome = tab === 'chat' && inChatRoom;
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right']}>
-      <LinearGradient
-        colors={['#1e3a8a', '#312e81', '#1e1b4b']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
-      >
-        <View style={styles.headerGlow} />
-        <View style={styles.headerRow}>
-          <View style={styles.avatarWrap}>
-            <LinearGradient
-              colors={[colors.accentLight, colors.accent]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatar}
-            >
-              <Text style={styles.avatarText}>{initials}</Text>
-            </LinearGradient>
-          </View>
-          <View style={styles.headerText}>
-            <Text style={styles.headerGreeting}>{greeting},</Text>
-            <Text style={styles.headerName} numberOfLines={1}>
-              {user.fullname || user.name || 'HR'}
-            </Text>
-            <View style={styles.roleChip}>
-              <MaterialIcons name="work-outline" size={12} color={colors.accentLight} />
-              <Text style={styles.headerRole} numberOfLines={1}>
-                {[
-                  user?.division?.name || user?.division,
-                  user?.sub_division?.name || user?.sub_division,
-                  user?.position?.name || user?.position,
-                ]
-                  .filter(Boolean)
-                  .join(' · ') || 'KARYAWAN'}
-              </Text>
+      {!hideMainChrome ? (
+        <LinearGradient
+          colors={['#1e3a8a', '#312e81', '#1e1b4b']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.header, { paddingTop: insets.top + 12 }]}
+        >
+          <View style={styles.headerGlow} />
+          <View style={styles.headerRow}>
+            <View style={styles.avatarWrap}>
+              <LinearGradient
+                colors={[colors.accentLight, colors.accent]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.avatar}
+              >
+                <Text style={styles.avatarText}>{initials}</Text>
+              </LinearGradient>
             </View>
-          </View>
-          <TouchableOpacity
-            style={styles.notifBtn}
-            onPress={() => setSubScreen('notifications')}
-            activeOpacity={0.7}
-          >
-            <MaterialIcons name="notifications" size={20} color="#e0e7ff" />
-            {notifCount > 0 ? (
-              <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>
-                  {notifCount > 9 ? '9+' : notifCount}
+            <View style={styles.headerText}>
+              <Text style={styles.headerGreeting}>{greeting},</Text>
+              <Text style={styles.headerName} numberOfLines={1}>
+                {user.fullname || user.name || 'HR'}
+              </Text>
+              <View style={styles.roleChip}>
+                <MaterialIcons name="work-outline" size={12} color={colors.accentLight} />
+                <Text style={styles.headerRole} numberOfLines={1}>
+                  {[
+                    user?.division?.name || user?.division,
+                    user?.sub_division?.name || user?.sub_division,
+                    user?.position?.name || user?.position,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || 'KARYAWAN'}
                 </Text>
               </View>
-            ) : null}
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+            </View>
+            <TouchableOpacity
+              style={styles.notifBtn}
+              onPress={() => setSubScreen('notifications')}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="notifications" size={20} color="#e0e7ff" />
+              {notifCount > 0 ? (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>
+                    {notifCount > 9 ? '9+' : notifCount}
+                  </Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      ) : null}
 
       <View style={styles.body}>{screen}</View>
 
-      <View style={[styles.tabbar, { paddingBottom: insets.bottom + 6 }]}>
-        {TABS.map((t) => {
-          const active = tab === t.key;
-          if (t.main) {
+      {!hideMainChrome ? (
+        <View style={[styles.tabbar, { paddingBottom: insets.bottom + 6 }]}>
+          {TABS.map((t) => {
+            const active = tab === t.key;
+            if (t.main) {
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  style={styles.tabMainWrap}
+                  onPress={() => navigateTab(t.key)}
+                  activeOpacity={0.8}
+                >
+                  <View
+                    style={[
+                      styles.tabMainBtn,
+                      active && styles.tabMainBtnActive,
+                    ]}
+                  >
+                    <MaterialIcons
+                      name={t.icon}
+                      size={30}
+                      color={active ? '#fff' : colors.accentLight}
+                    />
+                  </View>
+                  <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
+                    {t.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }
             return (
               <TouchableOpacity
                 key={t.key}
-                style={styles.tabMainWrap}
+                style={styles.tab}
                 onPress={() => navigateTab(t.key)}
-                activeOpacity={0.8}
+                activeOpacity={0.7}
               >
-                <View
-                  style={[
-                    styles.tabMainBtn,
-                    active && styles.tabMainBtnActive,
-                  ]}
-                >
+                <View style={[styles.tabIconWrap, active && styles.tabIconActive]}>
                   <MaterialIcons
                     name={t.icon}
-                    size={30}
-                    color={active ? '#fff' : colors.accentLight}
+                    size={22}
+                    color={active ? colors.accent : colors.muted}
                   />
+                  {tabBadge[t.key] > 0 ? (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText}>
+                        {tabBadge[t.key] > 9 ? '9+' : tabBadge[t.key]}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
                   {t.label}
                 </Text>
               </TouchableOpacity>
             );
-          }
-          return (
-            <TouchableOpacity
-              key={t.key}
-              style={styles.tab}
-              onPress={() => navigateTab(t.key)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.tabIconWrap, active && styles.tabIconActive]}>
-                <MaterialIcons
-                  name={t.icon}
-                  size={22}
-                  color={active ? colors.accent : colors.muted}
-                />
-                {tabBadge[t.key] > 0 ? (
-                  <View style={styles.tabBadge}>
-                    <Text style={styles.tabBadgeText}>
-                      {tabBadge[t.key] > 9 ? '9+' : tabBadge[t.key]}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
-                {t.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+          })}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }

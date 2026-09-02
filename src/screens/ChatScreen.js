@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   FlatList,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   RefreshControl,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getChatRooms,
   getChatMessages,
@@ -72,7 +74,15 @@ function Avatar({ name, online, size = 44, bgColor = colors.cardAlt }) {
   );
 }
 
-export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetConsumed }) {
+export default function ChatScreen({
+  user,
+  onBack,
+  onMarkRead,
+  target,
+  onTargetConsumed,
+  onActiveRoomChange,
+}) {
+  const insets = useSafeAreaInsets();
   const [rooms, setRooms] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [activeTab, setActiveTab] = useState('rooms'); // 'rooms' | 'contacts'
@@ -87,12 +97,51 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
   const [sending, setSending] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const listRef = useRef(null);
   const pollRef = useRef(null);
   const roomPollRef = useRef(null);
   const latestMsgIdRef = useRef(0);
   const targetHandled = useRef(false);
+
+  // Keyboard listener for Android & iOS
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Sync active room state with parent App.js (to hide main chrome)
+  useEffect(() => {
+    if (onActiveRoomChange) {
+      onActiveRoomChange(!!activeRoom);
+    }
+  }, [activeRoom, onActiveRoomChange]);
+
+  // Handle Android hardware back button inside room
+  useEffect(() => {
+    if (activeRoom) {
+      const onBackPress = () => {
+        exitRoom();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }
+  }, [activeRoom]);
 
   // Load Rooms List
   const loadRooms = useCallback(async (showIndicator = false) => {
@@ -157,6 +206,14 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
     }
   };
 
+  // Exit active room
+  const exitRoom = () => {
+    stopPolling();
+    setActiveRoom(null);
+    if (onActiveRoomChange) onActiveRoomChange(false);
+    loadRooms(false);
+  };
+
   // Delta polling for active room (queries only new messages after latestMsgId)
   const startPolling = (roomId) => {
     stopPolling();
@@ -175,7 +232,7 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
               latestMsgIdRef.current = Math.max(...combined.map((m) => (typeof m.id === 'number' ? m.id : 0)));
               return combined;
             });
-            setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+            setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
           }
           if (res.data.room) {
             setActiveRoom((prev) => ({
@@ -195,6 +252,7 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
   // Open conversation room
   async function openRoom(room) {
     setActiveRoom(room);
+    if (onActiveRoomChange) onActiveRoomChange(true);
     setMessages([]);
     setLoadingMessages(true);
     stopPolling();
@@ -211,7 +269,7 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
         startPolling(room.id);
         markChatRead(room.id).catch(() => {});
         if (onMarkRead) onMarkRead(room.id, new Date().toISOString());
-        setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 150);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 100);
       }
     } catch (e) {
       setError(e.message || 'Gagal memuat pesan chat.');
@@ -325,20 +383,12 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
     const isPartnerOnline = !!activeRoom.partner?.is_online;
 
     return (
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+      <View style={styles.roomContainer}>
         {/* Chat Room Topbar */}
-        <View style={styles.roomTopbar}>
+        <View style={[styles.roomTopbar, { paddingTop: Math.max(insets.top, 12) + 6 }]}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => {
-              stopPolling();
-              setActiveRoom(null);
-              loadRooms(false);
-            }}
+            onPress={exitRoom}
           >
             <MaterialIcons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -378,6 +428,7 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
             data={messages}
             keyExtractor={(item, idx) => String(item.id || idx)}
             contentContainerStyle={styles.messagesList}
+            keyboardShouldPersistTaps="handled"
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             renderItem={({ item, index }) => {
               const prev = index > 0 ? messages[index - 1] : null;
@@ -444,8 +495,18 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
           />
         )}
 
-        {/* Chat Input Bar */}
-        <View style={styles.inputContainer}>
+        {/* Chat Input Bar with dynamic keyboard spacing */}
+        <View
+          style={[
+            styles.inputContainer,
+            {
+              paddingBottom: keyboardHeight > 0
+                ? 10
+                : Math.max(insets.bottom, 12),
+              marginBottom: Platform.OS === 'ios' && keyboardHeight > 0 ? keyboardHeight : 0,
+            },
+          ]}
+        >
           <TextInput
             style={styles.textInput}
             value={input}
@@ -470,7 +531,7 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     );
   }
 
@@ -654,6 +715,10 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  roomContainer: {
     flex: 1,
     backgroundColor: colors.bg,
   },
@@ -881,7 +946,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     gap: 10,
@@ -1018,7 +1083,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: 8,
