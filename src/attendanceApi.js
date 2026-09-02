@@ -230,7 +230,20 @@ export async function sendPunch(payload) {
     }
     form.append('timestamp', payload.timestamp);
     form.append('timezone', payload.timezone);
-    form.append('device_info', JSON.stringify(payload.device_info || {}));
+    // device_info dikirim sebagai array multipart (backend mengharapkan array, bukan string JSON)
+    const di = payload.device_info || {};
+    Object.keys(di).forEach((k) => {
+      const v = di[k];
+      if (v === null || v === undefined) return;
+      if (typeof v === 'object') {
+        Object.keys(v).forEach((kk) => {
+          const vv = v[kk];
+          if (vv !== null && vv !== undefined) form.append(`device_info[${k}][${kk}]`, String(vv));
+        });
+      } else {
+        form.append(`device_info[${k}]`, String(v));
+      }
+    });
     form.append('photo', {
       uri: payload.photo.uri,
       name: payload.photo.name || 'selfie.jpg',
