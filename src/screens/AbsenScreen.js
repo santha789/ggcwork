@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -8,9 +9,11 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../theme';
 import { Loading } from '../components';
 import {
@@ -107,6 +110,11 @@ export default function AbsenScreen({ onLoggedOut }) {
   const [connectPassword, setConnectPassword] = useState('');
   const [connectLoading, setConnectLoading] = useState(false);
   const [connectError, setConnectError] = useState('');
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [photoUri, setPhotoUri] = useState(null);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const cameraRef = useRef(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -262,13 +270,28 @@ export default function AbsenScreen({ onLoggedOut }) {
       return;
     }
     if (punching) return;
+
+    // Foto selfie sebagai bukti evident wajib diambil di setiap absen.
+    if (!photoUri) {
+      openCamera();
+      return;
+    }
+
     setPunching(true);
     try {
       const loc = location || (await getCurrentLocation());
-      const payload = await buildPunchPayload(punchType, office, loc);
+      const payload = await buildPunchPayload(punchType, office, loc, {
+        photo: {
+          uri: photoUri,
+          name: 'selfie.jpg',
+          type: 'image/jpeg',
+        },
+        batteryLevel: null,
+      });
       const res = await sendPunch(payload);
 
       if (res.status === 200 && res.data) {
+        setPhotoUri(null);
         const d = res.data.data || {};
         const p = d.punch || {};
         const shownType = p.type === 'out' ? 'pulang' : 'masuk';
@@ -308,6 +331,40 @@ export default function AbsenScreen({ onLoggedOut }) {
       } catch (e) {
         // refresh state di tangani refresh()
       }
+    }
+  }
+
+  async function openCamera() {
+    if (photoLoading) return;
+    if (!cameraPermission?.granted) {
+      const req = await requestCameraPermission();
+      if (!req.granted) {
+        Alert.alert('Izin kamera ditolak', 'Aktifkan izin kamera untuk mengambil foto bukti absen.');
+        return;
+      }
+    }
+    setPhotoOpen(true);
+  }
+
+  async function snapPhoto() {
+    if (!cameraRef.current || photoLoading) return;
+    setPhotoLoading(true);
+    try {
+      const pic = await cameraRef.current.takePictureAsync({ quality: 0.6, base64: false });
+      setPhotoUri(pic.uri);
+      setPhotoOpen(false);
+      Alert.alert(
+        'Foto diambil',
+        'Lanjutkan absen dengan foto bukti ini?',
+        [
+          { text: 'Ulangi', style: 'cancel', onPress: () => { setPhotoUri(null); setPhotoOpen(true); } },
+          { text: 'Lanjut Absen', onPress: () => doPunch() },
+        ]
+      );
+    } catch (e) {
+      Alert.alert('Gagal', 'Tidak dapat mengambil foto.');
+    } finally {
+      setPhotoLoading(false);
     }
   }
 
@@ -376,11 +433,20 @@ export default function AbsenScreen({ onLoggedOut }) {
           cooldownActive={cooldownActive}
           cooldownLeft={cooldown.minutesLeft}
           cooldownMsg={actionState.message}
+          hasPhoto={!!photoUri}
           onPunch={doPunch}
         />
       ) : null}
 
       <PunchLogs logs={today?.punch_logs || []} />
+
+      <CameraModal
+        visible={photoOpen}
+        loading={photoLoading}
+        cameraRef={cameraRef}
+        onSnap={snapPhoto}
+        onClose={() => setPhotoOpen(false)}
+      />
 
       <Text style={styles.footnote}>
         {allowAnywhere
@@ -533,7 +599,7 @@ function LocationCard({ locating, locError, distance, radius, inside, allowAnywh
   );
 }
 
-function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, distance, radius, allowAnywhere, punching, cooldownActive, cooldownLeft, cooldownMsg, onPunch }) {
+function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, distance, radius, allowAnywhere, punching, cooldownActive, cooldownLeft, cooldownMsg, hasPhoto, onPunch }) {
   const attendance = today?.attendance;
   const hasIn = !!attendance?.clock_in;
   const hasOut = !!attendance?.clock_out;
@@ -562,11 +628,9 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
           ? allowAnywhere
             ? 'Absen lokasi bebas'
             : 'Di luar radius ' + radius + ' m'
-          : punchType === 'in'
-            ? 'Boleh 2 jam sebelum shift'
-            : punchType === 'out'
-              ? 'Pulang bebas, kapan pun'
-              : 'Semua sudah tercatat';
+          : hasPhoto
+            ? 'Foto bukti siap'
+            : 'Ambil foto selfie sebagai bukti';
 
   const gradColors = active ? [colors.indigo, colors.accent] : [colors.cardAlt, colors.cardAlt];
   const glyphColor = active ? '#fff' : colors.muted;
@@ -648,6 +712,44 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
         </LinearGradient>
       </TouchableOpacity>
     </View>
+  );
+}
+
+function CameraModal({ visible, loading, cameraRef, onSnap, onClose }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.cameraOverlay}>
+        <View style={styles.cameraHeader}>
+          <Text style={styles.cameraTitle}>Foto Bukti Diri</Text>
+          <TouchableOpacity onPress={onClose} style={styles.cameraClose}>
+            <MaterialIcons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          facing="front"
+        />
+
+        <View style={styles.cameraFooter}>
+          <Text style={styles.cameraHint}>Posisikan wajah di tengah, dalam pencahayaan cukup.</Text>
+          <TouchableOpacity
+            style={[styles.cameraBtn, loading && styles.cameraBtnDisabled]}
+            onPress={onSnap}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <MaterialIcons name="camera-alt" size={30} color="#fff" />
+            )}
+          </TouchableOpacity>
+          <Text style={styles.cameraHint}>Foto langsung dari kamera, bukan galeri.</Text>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1009,5 +1111,52 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: 'center',
     marginTop: 4,
+  },
+  cameraOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  cameraHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 52,
+    paddingBottom: 12,
+  },
+  cameraTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  cameraClose: {
+    padding: 4,
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraFooter: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 14,
+  },
+  cameraHint: {
+    color: colors.muted,
+    fontSize: 12,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  cameraBtn: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: '#fff',
+  },
+  cameraBtnDisabled: {
+    opacity: 0.6,
   },
 });

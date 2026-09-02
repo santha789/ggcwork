@@ -96,6 +96,40 @@ function jsonRequest(method, path, body, { token, idempotencyKey } = {}) {
   });
 }
 
+// Multipart request untuk punch berfoto (bukti evident). Mendukung FormData.
+function multipartRequest(method, path, formData, { token, idempotencyKey } = {}) {
+  return new Promise((resolve, reject) => {
+    const attempt = (retry) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(method, BASE + path);
+      xhr.setRequestHeader('Accept', 'application/json');
+      if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+      if (idempotencyKey) xhr.setRequestHeader('Idempotency-Key', idempotencyKey);
+
+      xhr.onload = () => {
+        let data = null;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch (e) {
+          data = null;
+        }
+        resolve({ status: xhr.status, data, text: xhr.responseText });
+      };
+      xhr.onerror = () => {
+        if (retry > 0) setTimeout(() => attempt(retry - 1), 1500);
+        else reject(new Error('Tidak dapat terhubung ke server. Periksa koneksi internet.'));
+      };
+      xhr.timeout = 60000;
+      xhr.ontimeout = () => {
+        if (retry > 0) setTimeout(() => attempt(retry - 1), 1500);
+        else reject(new Error('Server terlalu lama merespons.'));
+      };
+      xhr.send(formData);
+    };
+    attempt(1);
+  });
+}
+
 export async function apiLogin(email, password) {
   const res = await jsonRequest('POST', '/api/login', {
     email,
@@ -171,6 +205,55 @@ export async function sendPunch(payload) {
   const token = await getStoredToken();
   if (!token) throw new Error('Sesi absen tidak ditemukan.');
   const key = await Crypto.randomUUID();
+
+  // Jika ada foto, kirim via multipart/form-data dengan field lain sebagai form fields
+  // (backend menyimpan meta seperti lat/lng/device_info dll dari form fields ini).
+  if (payload.photo) {
+    const form = new FormData();
+    form.append('punch_type', payload.punch_type);
+    form.append('lat', String(payload.lat));
+    form.append('lng', String(payload.lng));
+    form.append('accuracy_m', String(payload.accuracy_m));
+    if (payload.altitude_m !== null && payload.altitude_m !== undefined) {
+      form.append('altitude_m', String(payload.altitude_m));
+    }
+    if (payload.speed_kmh !== null && payload.speed_kmh !== undefined) {
+      form.append('speed_kmh', String(payload.speed_kmh));
+    }
+    if (payload.bearing_deg !== null && payload.bearing_deg !== undefined) {
+      form.append('bearing_deg', String(payload.bearing_deg));
+    }
+    if (payload.geofence_id) form.append('geofence_id', String(payload.geofence_id));
+    if (payload.address) form.append('address', payload.address);
+    if (payload.battery_level !== null && payload.battery_level !== undefined) {
+      form.append('battery_level', String(payload.battery_level));
+    }
+    form.append('timestamp', payload.timestamp);
+    form.append('timezone', payload.timezone);
+    form.append('device_info', JSON.stringify(payload.device_info || {}));
+    form.append('photo', {
+      uri: payload.photo.uri,
+      name: payload.photo.name || 'selfie.jpg',
+      type: payload.photo.type || 'image/jpeg',
+    });
+
+    const res = await multipartRequest('POST', '/api/attendance/punch', form, {
+      token,
+      idempotencyKey: key,
+    });
+    if (res.status === 401) {
+      const err = new Error('Sesi absen berakhir. Silakan login ulang.');
+      err.unauthorized = true;
+      throw err;
+    }
+    const out = { status: res.status, data: res.data };
+    if (res.status === 200) return out;
+    out.message =
+      res.data?.message || res.data?.error || res.data?.errors?.photo?.[0] ||
+      'Punch gagal (status ' + res.status + ').';
+    return out;
+  }
+
   const res = await jsonRequest('POST', '/api/attendance/punch', payload, {
     token,
     idempotencyKey: key,
@@ -294,7 +377,7 @@ export function haversineMeters(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-export async function buildPunchPayload(punchType, office, location) {
+export async function buildPunchPayload(punchType, office, location, extras = {}) {
   const deviceInfo = await collectDeviceInfo(location);
   const now = new Date();
   const tz = office?.timezone || 'Asia/Jakarta';
@@ -310,6 +393,9 @@ export async function buildPunchPayload(punchType, office, location) {
     timezone: tz,
     geofence_id: office?.id || null,
     device_info: deviceInfo,
+    photo: extras.photo || null,
+    address: extras.address || null,
+    battery_level: extras.batteryLevel ?? null,
   };
 }
 
