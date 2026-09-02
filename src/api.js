@@ -244,6 +244,34 @@ export async function changePassword(current, password) {
   throw new Error('Ganti password gagal (status ' + res.status + ').');
 }
 
+export async function getJsonApi(path) {
+  const res = await request('GET', path, null, { Accept: 'application/json' });
+  if (res.status === 401) {
+    const err = new Error('Sesi berakhir. Silakan login ulang.');
+    err.unauthorized = true;
+    throw err;
+  }
+  try {
+    return JSON.parse(res.text);
+  } catch (e) {
+    throw new Error('Gagal memproses data JSON.');
+  }
+}
+
+export async function postJsonApi(path, body) {
+  const res = await request('POST', path, body, { Accept: 'application/json' });
+  if (res.status === 401) {
+    const err = new Error('Sesi berakhir. Silakan login ulang.');
+    err.unauthorized = true;
+    throw err;
+  }
+  try {
+    return JSON.parse(res.text);
+  } catch (e) {
+    throw new Error('Gagal memproses data JSON.');
+  }
+}
+
 export async function getPage(path) {
   const res = await request('GET', path);
   if (res.status === 419) {

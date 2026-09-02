@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -11,7 +12,14 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { getPage, postPage } from '../api';
+import {
+  getChatRooms,
+  getChatMessages,
+  sendChatMessage,
+  markChatRead,
+  startPrivateChat,
+  getChatUsers,
+} from '../chatApi';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
 
@@ -21,12 +29,29 @@ const fmtTime = (dt) => {
   return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 };
 
-const initialsOf = (u) =>
-  ((u?.firstname || u?.fullname || 'G')[0] || 'G').toUpperCase();
+const fmtDateSeparator = (dt) => {
+  if (!dt) return '';
+  const d = new Date(dt);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Hari Ini';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Kemarin';
+  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
-function Avatar({ user, online, size = 44 }) {
+const initialsOf = (name) => {
+  if (!name) return 'G';
+  const parts = String(name).trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return (parts[0][0] || 'G').toUpperCase();
+};
+
+function Avatar({ name, online, size = 44, bgColor = colors.cardAlt }) {
   return (
-    <View style={{ position: 'relative' }}>
+    <View style={{ position: 'relative', width: size, height: size }}>
       <View
         style={[
           styles.avatar,
@@ -34,11 +59,12 @@ function Avatar({ user, online, size = 44 }) {
             width: size,
             height: size,
             borderRadius: size / 2,
+            backgroundColor: bgColor,
           },
         ]}
       >
-        <Text style={[styles.avatarText, { fontSize: size * 0.4 }]}>
-          {initialsOf(user)}
+        <Text style={[styles.avatarText, { fontSize: size * 0.38 }]}>
+          {initialsOf(name)}
         </Text>
       </View>
       {online ? <View style={styles.onlineDot} /> : null}
@@ -46,50 +72,84 @@ function Avatar({ user, online, size = 44 }) {
   );
 }
 
-export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetConsumed, lastSeen }) {
-  const [data, setData] = useState(null);
+export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetConsumed }) {
+  const [rooms, setRooms] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [activeTab, setActiveTab] = useState('rooms'); // 'rooms' | 'contacts'
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  // Active Chat Room State
   const [activeRoom, setActiveRoom] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [query, setQuery] = useState('');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState('');
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
   const listRef = useRef(null);
   const pollRef = useRef(null);
+  const roomPollRef = useRef(null);
+  const latestMsgIdRef = useRef(0);
   const targetHandled = useRef(false);
 
-  const load = useCallback(async () => {
+  // Load Rooms List
+  const loadRooms = useCallback(async (showIndicator = false) => {
+    if (showIndicator) setLoading(true);
     try {
-      const props = await getPage('/chat');
-      setData(props);
-      setError('');
+      const res = await getChatRooms();
+      if (res.success && Array.isArray(res.data)) {
+        setRooms(res.data);
+        setError('');
+      }
     } catch (e) {
-      setError(e.message);
+      if (!rooms.length) setError(e.message || 'Gagal memuat pesan.');
+    } finally {
+      if (showIndicator) setLoading(false);
     }
+  }, [rooms.length]);
+
+  // Load Contacts Directory
+  const loadContacts = useCallback(async () => {
+    try {
+      const res = await getChatUsers();
+      if (res.success && Array.isArray(res.data)) {
+        setContacts(res.data);
+      }
+    } catch (e) {}
   }, []);
 
+  // Initial fetch
   useEffect(() => {
-    load();
-  }, [load]);
+    loadRooms(true);
+    loadContacts();
+  }, []);
 
+  // Periodic rooms poller when in room list
   useEffect(() => {
-    if (target && !targetHandled.current && data) {
-      targetHandled.current = true;
-      const partner = (data.allUsers || []).find((u) => u.id === target);
-      const room = (data.rooms || []).find((r) => r.id === target);
-      if (room && room.users) {
-        const other = room.users.find((u) => u.id !== user?.id);
-        if (other) openChat(other.id);
-        else if (onTargetConsumed) onTargetConsumed();
-      } else if (partner) {
-        openChat(partner.id);
-      } else if (onTargetConsumed) {
-        onTargetConsumed();
-      }
+    if (!activeRoom) {
+      roomPollRef.current = setInterval(() => {
+        loadRooms(false);
+      }, 5000);
+      return () => {
+        if (roomPollRef.current) clearInterval(roomPollRef.current);
+      };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target, data]);
+  }, [activeRoom, loadRooms]);
 
+  // Handle external deep link target (e.g. from notifications)
+  useEffect(() => {
+    if (target && !targetHandled.current) {
+      targetHandled.current = true;
+      if (typeof target === 'number') {
+        openChatWithUser(target);
+      }
+      if (onTargetConsumed) onTargetConsumed();
+    }
+  }, [target, onTargetConsumed]);
+
+  // Stop messages poller
   const stopPolling = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -97,334 +157,497 @@ export default function ChatScreen({ user, onBack, onMarkRead, target, onTargetC
     }
   };
 
+  // Delta polling for active room (queries only new messages after latestMsgId)
   const startPolling = (roomId) => {
     stopPolling();
     pollRef.current = setInterval(async () => {
       try {
-        const props = await getPage('/chat?room_id=' + roomId);
-        setMessages(props.messages || []);
-        setActiveRoom(props.activeRoom);
-        setData((prev) =>
-          prev
-            ? {
-                ...prev,
-                onlineUserIds: props.onlineUserIds || prev.onlineUserIds,
-              }
-            : prev
-        );
-        const room = (props.rooms || []).find((r) => r.id === roomId);
-        if (room && onMarkRead) onMarkRead(room.id, room.updated_at);
+        const afterId = latestMsgIdRef.current;
+        const res = await getChatMessages(roomId, afterId);
+        if (res.success && res.data) {
+          const newMsgs = res.data.messages || [];
+          if (newMsgs.length > 0) {
+            setMessages((prev) => {
+              const existingIds = new Set(prev.map((m) => m.id));
+              const filteredNew = newMsgs.filter((m) => !existingIds.has(m.id));
+              if (filteredNew.length === 0) return prev;
+              const combined = [...prev, ...filteredNew];
+              latestMsgIdRef.current = Math.max(...combined.map((m) => (typeof m.id === 'number' ? m.id : 0)));
+              return combined;
+            });
+            setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+          }
+          if (res.data.room) {
+            setActiveRoom((prev) => ({
+              ...prev,
+              ...res.data.room,
+            }));
+          }
+        }
       } catch (e) {
-        // abaikan, polling berikutnya dicoba lagi
+        // network retry on next interval
       }
-    }, 3000);
+    }, 2000);
   };
 
   useEffect(() => () => stopPolling(), []);
 
-  async function openChat(targetId) {
-    setError('');
+  // Open conversation room
+  async function openRoom(room) {
+    setActiveRoom(room);
+    setMessages([]);
+    setLoadingMessages(true);
+    stopPolling();
+
     try {
-      const props = await getPage('/chat/start/' + targetId);
-      if (props.activeRoom) {
-        setActiveRoom(props.activeRoom);
-        setMessages(props.messages || []);
-        if (props.rooms) {
-          const room = props.rooms.find((r) => r.id === props.activeRoom.id);
-          if (room && onMarkRead) onMarkRead(room.id, room.updated_at);
-        } else if (onMarkRead) {
-          onMarkRead(props.activeRoom.id, new Date().toISOString());
+      const res = await getChatMessages(room.id);
+      if (res.success && res.data) {
+        const list = res.data.messages || [];
+        setMessages(list);
+        latestMsgIdRef.current = res.data.latest_id || (list.length ? list[list.length - 1].id : 0);
+        if (res.data.room) {
+          setActiveRoom(res.data.room);
         }
-        startPolling(props.activeRoom.id);
-        setTimeout(
-          () => listRef.current && listRef.current.scrollToEnd({ animated: true }),
-          150
-        );
+        startPolling(room.id);
+        markChatRead(room.id).catch(() => {});
+        if (onMarkRead) onMarkRead(room.id, new Date().toISOString());
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 150);
       }
     } catch (e) {
-      setError(e.message);
+      setError(e.message || 'Gagal memuat pesan chat.');
+    } finally {
+      setLoadingMessages(false);
     }
   }
 
-  async function send() {
+  // Start chat with user ID directly
+  async function openChatWithUser(targetUserId) {
+    setLoadingMessages(true);
+    try {
+      const startRes = await startPrivateChat(targetUserId);
+      if (startRes.success && startRes.room_id) {
+        const roomObj = { id: startRes.room_id, type: 'private' };
+        await openRoom(roomObj);
+      }
+    } catch (e) {
+      setError(e.message || 'Gagal memulai percakapan.');
+      setLoadingMessages(false);
+    }
+  }
+
+  // Send message with instant optimistic UI update
+  async function handleSend() {
     const content = input.trim();
-    if (!content || !activeRoom || sending) return;
+    if (!content || sending || !activeRoom) return;
+
+    setInput('');
+    const tempId = 'temp_' + Date.now();
+    const optimisticMsg = {
+      id: tempId,
+      chat_room_id: activeRoom.id,
+      user_id: user?.id,
+      sender_name: user?.fullname || 'Saya',
+      sender_first: user?.firstname || 'Saya',
+      content,
+      type: 'text',
+      is_mine: true,
+      is_read: false,
+      created_at: new Date().toISOString(),
+      is_pending: true,
+    };
+
+    // Instant append for zero latency
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+
     setSending(true);
     try {
-      await postPage('/chat/room/' + activeRoom.id + '/send', { content });
-      setInput('');
-      const props = await getPage('/chat?room_id=' + activeRoom.id);
-      setMessages(props.messages || []);
-      setActiveRoom(props.activeRoom);
-      setTimeout(
-        () => listRef.current && listRef.current.scrollToEnd({ animated: true }),
-        150
-      );
+      const res = await sendChatMessage(activeRoom.id, content);
+      if (res.success && res.data) {
+        const realMsg = res.data;
+        latestMsgIdRef.current = Math.max(latestMsgIdRef.current, realMsg.id);
+        // Replace temp optimistic message with confirmed server message
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...realMsg, is_mine: true } : m))
+        );
+      }
     } catch (e) {
-      setError(e.message);
+      // Mark failed message
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, is_failed: true, is_pending: false } : m))
+      );
     } finally {
       setSending(false);
     }
   }
 
-  if (error) return <Error message={error} onRetry={load} />;
-  if (!data) return <Loading />;
+  // Refresh room list
+  async function handleRefresh() {
+    setRefreshing(true);
+    await Promise.all([loadRooms(false), loadContacts()]);
+    setRefreshing(false);
+  }
 
-  const me = user?.id;
-  const onlineIds = data.onlineUserIds || [];
-  const users = data.allUsers || [];
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? users.filter((u) => {
-        const name = (u.fullname || '').toLowerCase();
-        const sub = (u.sub_division?.name || u.division?.name || '').toLowerCase();
-        const pos = (u.position?.name || '').toLowerCase();
-        return name.includes(q) || sub.includes(q) || pos.includes(q);
-      })
-    : users;
+  // Filtered rooms list
+  const filteredRooms = useMemo(() => {
+    if (!searchQuery.trim()) return rooms;
+    const q = searchQuery.toLowerCase();
+    return rooms.filter((r) => {
+      const name = (r.name || '').toLowerCase();
+      const subDiv = (r.partner?.sub_division || '').toLowerCase();
+      const last = (r.last_message?.content || '').toLowerCase();
+      return name.includes(q) || subDiv.includes(q) || last.includes(q);
+    });
+  }, [rooms, searchQuery]);
 
+  // Filtered contacts list
+  const filteredContacts = useMemo(() => {
+    if (!searchQuery.trim()) return contacts;
+    const q = searchQuery.toLowerCase();
+    return contacts.filter((c) => {
+      const name = (c.fullname || '').toLowerCase();
+      const empId = (c.employee_id || '').toLowerCase();
+      const subDiv = (c.sub_division || '').toLowerCase();
+      return name.includes(q) || empId.includes(q) || subDiv.includes(q);
+    });
+  }, [contacts, searchQuery]);
+
+  if (loading && !rooms.length && !activeRoom) {
+    return <Loading />;
+  }
+
+  // ==========================================
+  // VIEW: INSIDE ACTIVE CHAT ROOM
+  // ==========================================
   if (activeRoom) {
-    const partner = (activeRoom.users || []).find((u) => u.id !== me);
-    const partnerOnline = partner
-      ? onlineIds.includes(partner.id) || Boolean(partner.is_online)
-      : false;
+    const partnerName = activeRoom.partner?.fullname || activeRoom.name || 'Chat';
+    const partnerSubDiv = activeRoom.partner?.sub_division || 'GGCLink Staff';
+    const isPartnerOnline = !!activeRoom.partner?.is_online;
+
     return (
-      <View style={styles.container}>
-        <View style={styles.topbar}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        {/* Chat Room Topbar */}
+        <View style={styles.roomTopbar}>
           <TouchableOpacity
             style={styles.backBtn}
             onPress={() => {
               stopPolling();
               setActiveRoom(null);
-              setMessages([]);
+              loadRooms(false);
             }}
           >
-            <MaterialIcons name="arrow-back" size={22} color={colors.text} />
+            <MaterialIcons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Avatar user={partner} online={partnerOnline} size={40} />
-          <View style={styles.chatHead}>
-            <Text style={styles.chatHeadName} numberOfLines={1}>
-              {partner?.fullname || activeRoom.name || 'Chat'}
+
+          <Avatar name={partnerName} online={isPartnerOnline} size={40} bgColor={colors.accent + '33'} />
+
+          <View style={styles.roomHeaderCenter}>
+            <Text style={styles.roomPartnerName} numberOfLines={1}>
+              {partnerName}
             </Text>
-            <Text style={styles.chatHeadSub} numberOfLines={1}>
-              {[
-                partner?.sub_division?.name || partner?.division?.name,
-                partner?.position?.name,
-              ]
-                .filter(Boolean)
-                .join(' · ') || 'Divisi GGC'}
-              {'  ·  '}
-              {partnerOnline ? 'Online' : 'Offline'}
-            </Text>
+            <View style={styles.statusRow}>
+              {isPartnerOnline ? (
+                <Text style={styles.onlineStatusText}>🟢 Online</Text>
+              ) : (
+                <Text style={styles.offlineStatusText}>{partnerSubDiv}</Text>
+              )}
+            </View>
           </View>
         </View>
 
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(m) => String(m.id)}
-          contentContainerStyle={styles.msgList}
-          onContentSizeChange={() =>
-            listRef.current && listRef.current.scrollToEnd({ animated: false })
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyChat}>
-              <MaterialIcons
-                name="chat-bubble-outline"
-                size={34}
-                color={colors.muted}
-              />
-              <Text style={styles.emptyChatText}>
-                Belum ada obrolan. Ketik pesan di bawah untuk memulai.
-              </Text>
-            </View>
-          }
-          renderItem={({ item: msg }) => {
-            const mine = msg.user_id === me;
-            const read = !!msg.read_at;
-            return (
-              <View style={[styles.msgRow, mine ? styles.msgRowMine : styles.msgRowOther]}>
-                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
-                  {!mine && (
-                    <Text style={styles.bubbleName} numberOfLines={1}>
-                      {msg.user?.fullname || 'Karyawan'}
-                    </Text>
-                  )}
-                  <Text style={[styles.bubbleContent, mine && styles.bubbleContentMine]}>
-                    {msg.content}
-                  </Text>
-                  <View style={[styles.bubbleFooter, mine && styles.bubbleFooterMine]}>
-                    <Text style={[styles.bubbleTime, mine && styles.bubbleTimeMine]}>
-                      {fmtTime(msg.created_at)}
-                    </Text>
-                    {mine ? (
-                      <MaterialIcons
-                        name={read ? 'done-all' : 'done'}
-                        size={15}
-                        color={read ? '#60a5fa' : 'rgba(255,255,255,0.5)'}
-                        style={{ marginLeft: 4 }}
-                      />
+        {/* Messages List */}
+        {loadingMessages ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color={colors.accent} />
+          </View>
+        ) : messages.length === 0 ? (
+          <View style={styles.emptyChatBox}>
+            <MaterialIcons name="forum" size={48} color={colors.muted + '66'} />
+            <Text style={styles.emptyChatTitle}>Mulai Percakapan</Text>
+            <Text style={styles.emptyChatDesc}>
+              Kirim pesan pertama kamu kepada {partnerName}.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(item, idx) => String(item.id || idx)}
+            contentContainerStyle={styles.messagesList}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            renderItem={({ item, index }) => {
+              const prev = index > 0 ? messages[index - 1] : null;
+              const showDateSep = !prev || new Date(item.created_at).toDateString() !== new Date(prev.created_at).toDateString();
+              const isMine = !!item.is_mine;
+
+              return (
+                <View key={item.id}>
+                  {showDateSep ? (
+                    <View style={styles.dateSeparator}>
+                      <Text style={styles.dateSeparatorText}>
+                        {fmtDateSeparator(item.created_at)}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <View
+                    style={[
+                      styles.messageRow,
+                      isMine ? styles.messageRowMine : styles.messageRowOther,
+                    ]}
+                  >
+                    {!isMine ? (
+                      <View style={{ marginRight: 6, alignSelf: 'flex-end', marginBottom: 2 }}>
+                        <Avatar name={item.sender_name} size={28} bgColor={colors.cardAlt} />
+                      </View>
                     ) : null}
+
+                    <View
+                      style={[
+                        styles.bubble,
+                        isMine ? styles.bubbleMine : styles.bubbleOther,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.messageText,
+                          isMine ? styles.messageTextMine : styles.messageTextOther,
+                        ]}
+                      >
+                        {item.content}
+                      </Text>
+
+                      <View style={styles.metaRow}>
+                        <Text
+                          style={[
+                            styles.timeText,
+                            isMine ? styles.timeTextMine : styles.timeTextOther,
+                          ]}
+                        >
+                          {fmtTime(item.created_at)}
+                        </Text>
+                        {isMine ? (
+                          <Text style={styles.statusTick}>
+                            {item.is_pending ? '⌛' : (item.is_read ? '✓✓' : '✓')}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
                   </View>
                 </View>
-              </View>
-            );
-          }}
-        />
+              );
+            }}
+          />
+        )}
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <View style={styles.inputBar}>
-            <TextInput
-              style={styles.input}
-              value={input}
-              onChangeText={setInput}
-              placeholder="Ketik pesan..."
-              placeholderTextColor={colors.muted}
-              multiline
-            />
-            <TouchableOpacity
-              style={[
-                styles.sendBtn,
-                (!input.trim() || sending) && styles.sendBtnDisabled,
-              ]}
-              onPress={send}
-              disabled={!input.trim() || sending}
-            >
-              <MaterialIcons
-                name={sending ? 'hourglass-empty' : 'send'}
-                size={20}
-                color="#fff"
-              />
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
+        {/* Chat Input Bar */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.textInput}
+            value={input}
+            onChangeText={setInput}
+            placeholder="Ketik pesan..."
+            placeholderTextColor={colors.muted}
+            multiline
+            maxLength={3000}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendBtn,
+              !input.trim() && styles.sendBtnDisabled,
+            ]}
+            onPress={handleSend}
+            disabled={!input.trim() || sending}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <MaterialIcons name="send" size={20} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     );
   }
 
+  // ==========================================
+  // VIEW: ROOMS LIST & CONTACTS DIRECTORY
+  // ==========================================
   return (
     <View style={styles.container}>
-      <View style={styles.topbar}>
-        {onBack ? (
-          <TouchableOpacity style={styles.backBtn} onPress={onBack}>
-            <MaterialIcons name="arrow-back" size={22} color={colors.text} />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.backBtn}>
-            <MaterialIcons name="forum" size={20} color={colors.accentLight} />
-          </View>
-        )}
-        <View style={styles.headCenter}>
-          <Text style={styles.title}>Chat & Tim GGC</Text>
-          <Text style={styles.subtitle}>
-            {onlineIds.length} karyawan online
-          </Text>
-        </View>
-        <View style={styles.backBtn} />
+      {/* Top Header */}
+      <View style={styles.topHeader}>
+        <Text style={styles.headerTitle}>Pesan & Diskusi</Text>
+        <Text style={styles.headerSubtitle}>GGCLink Internal Messenger</Text>
       </View>
 
+      {/* Search Bar */}
       <View style={styles.searchBar}>
         <MaterialIcons name="search" size={20} color={colors.muted} />
         <TextInput
           style={styles.searchInput}
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Cari nama, subdivisi, jabatan..."
+          placeholder="Cari pesan atau nama rekan kerja..."
           placeholderTextColor={colors.muted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
         />
+        {searchQuery ? (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <MaterialIcons name="close" size={18} color={colors.muted} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
-      <ScrollView contentContainerStyle={styles.contactList}>
-        {(data.rooms || []).length > 0 && (
-          <>
-            <Text style={styles.sectionLabel}>
-              Chat Terakhir
+      {/* Tab Switcher: Percakapan vs Kontak Karyawan */}
+      <View style={styles.tabSwitcher}>
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'rooms' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('rooms')}
+        >
+          <MaterialIcons
+            name="chat"
+            size={16}
+            color={activeTab === 'rooms' ? colors.accentLight : colors.muted}
+          />
+          <Text
+            style={[
+              styles.tabBtnText,
+              activeTab === 'rooms' && styles.tabBtnTextActive,
+            ]}
+          >
+            Obrolan ({rooms.length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'contacts' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('contacts')}
+        >
+          <MaterialIcons
+            name="people"
+            size={16}
+            color={activeTab === 'contacts' ? colors.accentLight : colors.muted}
+          />
+          <Text
+            style={[
+              styles.tabBtnText,
+              activeTab === 'contacts' && styles.tabBtnTextActive,
+            ]}
+          >
+            Karyawan ({contacts.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {error ? <Error message={error} onRetry={() => loadRooms(true)} /> : null}
+
+      {/* Rooms List */}
+      {activeTab === 'rooms' ? (
+        filteredRooms.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <MaterialIcons name="chat-bubble-outline" size={54} color={colors.muted} />
+            <Text style={styles.emptyTitle}>Belum Ada Obrolan</Text>
+            <Text style={styles.emptySubtitle}>
+              Pilih tab "Karyawan" untuk memulai obrolan baru dengan rekan kerja.
             </Text>
-            {data.rooms.map((r) => {
-              const partner = (r.users || [])[0] || {};
-              const isOnline = onlineIds.includes(partner.id) || Boolean(partner.is_online);
-              const lastMsg = r.last_message;
-              const lastSeenTs = lastSeen?.chat?.[r.id];
-              const hasUnread = !lastSeenTs || (lastMsg && new Date(lastMsg.created_at).getTime() > new Date(lastSeenTs).getTime());
+          </View>
+        ) : (
+          <FlatList
+            data={filteredRooms}
+            keyExtractor={(item) => String(item.id)}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+            contentContainerStyle={styles.roomsList}
+            renderItem={({ item }) => {
+              const partner = item.partner;
+              const name = partner?.fullname || item.name || 'Chat';
+              const lastMsg = item.last_message;
+              const isOnline = !!partner?.is_online;
+              const unread = item.unread_count || 0;
+
               return (
                 <TouchableOpacity
-                  key={r.id}
-                  style={styles.contact}
-                  onPress={() => {
-                    const otherId = (r.users || []).find((u) => u.id !== me)?.id;
-                    if (otherId) openChat(otherId);
-                  }}
+                  style={[styles.roomCard, unread > 0 && styles.roomCardUnread]}
+                  onPress={() => openRoom(item)}
                   activeOpacity={0.7}
                 >
-                  <Avatar user={partner} online={isOnline} />
-                  <View style={styles.contactBody}>
-                    <View style={styles.roomRow}>
-                      <Text style={[styles.contactName, hasUnread && styles.boldText]} numberOfLines={1}>
-                        {partner.fullname || r.name}
+                  <Avatar name={name} online={isOnline} size={48} bgColor={colors.cardAlt} />
+
+                  <View style={styles.roomCardCenter}>
+                    <View style={styles.roomCardTopRow}>
+                      <Text style={[styles.roomCardName, unread > 0 && styles.roomCardNameBold]} numberOfLines={1}>
+                        {name}
                       </Text>
-                      <Text style={styles.roomTime} numberOfLines={1}>
-                        {lastMsg ? fmtTime(lastMsg.created_at) : ''}
+                      <Text style={styles.roomCardTime}>
+                        {lastMsg ? lastMsg.time_ago || fmtTime(lastMsg.created_at) : ''}
                       </Text>
                     </View>
-                    <View style={styles.roomRow}>
-                      <Text style={[styles.contactSub, hasUnread && styles.boldSub]} numberOfLines={1}>
-                        {lastMsg
-                          ? (lastMsg.sender_id === me ? 'Kamu: ' : '') + lastMsg.content
-                          : (partner.sub_division?.name || partner.division?.name || 'Mulai chat')}
+
+                    <Text style={styles.roomCardSubDiv} numberOfLines={1}>
+                      {partner?.sub_division || 'Staff'}
+                    </Text>
+
+                    <View style={styles.roomCardBottomRow}>
+                      <Text
+                        style={[
+                          styles.roomCardLastMsg,
+                          unread > 0 && styles.roomCardLastMsgUnread,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {lastMsg ? (lastMsg.is_mine ? 'Anda: ' : '') + lastMsg.content : 'Belum ada pesan.'}
                       </Text>
-                      {hasUnread ? (
+
+                      {unread > 0 ? (
                         <View style={styles.unreadBadge}>
-                          <Text style={styles.unreadBadgeText}>●</Text>
+                          <Text style={styles.unreadBadgeText}>
+                            {unread > 99 ? '99+' : unread}
+                          </Text>
                         </View>
                       ) : null}
                     </View>
                   </View>
                 </TouchableOpacity>
               );
-            })}
-          </>
-        )}
-        <Text style={styles.sectionLabel}>
-          Direktori Karyawan ({filtered.length})
-        </Text>
-        {filtered.length === 0 ? (
-          <Text style={styles.emptyText}>Tidak ada kontak ditemukan.</Text>
-        ) : (
-          filtered.map((u) => {
-            const isOnline = onlineIds.includes(u.id) || Boolean(u.is_online);
+            }}
+          />
+        )
+      ) : (
+        /* Contacts Directory Tab */
+        <FlatList
+          data={filteredContacts}
+          keyExtractor={(item) => String(item.id)}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          contentContainerStyle={styles.roomsList}
+          renderItem={({ item }) => {
             return (
               <TouchableOpacity
-                key={u.id}
-                style={styles.contact}
-                onPress={() => openChat(u.id)}
+                style={styles.contactCard}
+                onPress={() => openChatWithUser(item.id)}
                 activeOpacity={0.7}
               >
-                <Avatar user={u} online={isOnline} />
-                <View style={styles.contactBody}>
+                <Avatar name={item.fullname} online={item.is_online} size={46} bgColor={colors.cardAlt} />
+
+                <View style={styles.contactCenter}>
                   <Text style={styles.contactName} numberOfLines={1}>
-                    {u.fullname}
+                    {item.fullname}
                   </Text>
-                  <Text style={styles.contactSub} numberOfLines={1}>
-                    {[
-                      u.sub_division?.name || u.division?.name || 'Staf',
-                      u.position?.name,
-                    ]
-                      .filter(Boolean)
-                      .join(' • ')}
+                  <Text style={styles.contactSubDiv} numberOfLines={1}>
+                    {item.sub_division} • {item.position}
                   </Text>
                 </View>
-                {isOnline ? (
-                  <View style={styles.onlinePill}>
-                    <Text style={styles.onlinePillText}>Online</Text>
-                  </View>
-                ) : null}
+
+                <View style={styles.chatActionBtn}>
+                  <MaterialIcons name="send" size={16} color={colors.accentLight} />
+                </View>
               </TouchableOpacity>
             );
-          })
-        )}
-      </ScrollView>
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -434,289 +657,393 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  topbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  topHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 10,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  headCenter: {
-    flex: 1,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 20,
+  headerTitle: {
+    fontSize: 22,
     fontWeight: 'bold',
+    color: colors.text,
   },
-  subtitle: {
-    color: colors.muted,
+  headerSubtitle: {
     fontSize: 12,
-    fontWeight: '600',
+    color: colors.muted,
+    marginTop: 2,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     backgroundColor: colors.card,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 12,
-    marginHorizontal: 14,
+    gap: 8,
   },
   searchInput: {
     flex: 1,
-    color: colors.text,
-    paddingVertical: 10,
     fontSize: 13,
+    color: colors.text,
+    padding: 0,
   },
-  contactList: {
-    padding: 14,
-    paddingBottom: 24,
-  },
-  sectionLabel: {
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  emptyText: {
-    color: colors.muted,
-    fontSize: 12,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    padding: 20,
-  },
-  contact: {
+  tabSwitcher: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 14,
+    marginHorizontal: 16,
+    marginBottom: 12,
     backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 4,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 8,
+    gap: 4,
   },
-  contactBody: {
+  tabBtn: {
     flex: 1,
-    marginLeft: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
   },
-  contactName: {
-    color: colors.text,
-    fontWeight: 'bold',
-    fontSize: 14,
+  tabBtnActive: {
+    backgroundColor: colors.accent + '22',
   },
-  contactSub: {
-    color: colors.muted,
+  tabBtnText: {
     fontSize: 12,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  tabBtnTextActive: {
+    color: colors.accentLight,
+    fontWeight: 'bold',
+  },
+  roomsList: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    gap: 8,
+  },
+  roomCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  roomCardUnread: {
+    borderColor: colors.accent + '66',
+    backgroundColor: colors.accent + '10',
+  },
+  roomCardCenter: {
+    flex: 1,
+  },
+  roomCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  roomCardName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  roomCardNameBold: {
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  roomCardTime: {
+    fontSize: 10,
+    color: colors.muted,
+  },
+  roomCardSubDiv: {
+    fontSize: 11,
+    color: colors.accentLight,
     marginTop: 1,
   },
-  onlinePill: {
-    backgroundColor: colors.green + '22',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
+  roomCardBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
   },
-  onlinePillText: {
-    color: colors.green,
-    fontSize: 9,
-    fontWeight: '700',
+  roomCardLastMsg: {
+    fontSize: 12,
+    color: colors.muted,
+    flex: 1,
+    marginRight: 8,
   },
-  avatar: {
-    backgroundColor: colors.accent + '33',
+  roomCardLastMsgUnread: {
+    color: colors.text,
+    fontWeight: '500',
+  },
+  unreadBadge: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    minWidth: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
-    color: colors.accentLight,
+  unreadBadgeText: {
+    color: '#fff',
+    fontSize: 10,
     fontWeight: 'bold',
+  },
+  contactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  contactCenter: {
+    flex: 1,
+  },
+  contactName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  contactSubDiv: {
+    fontSize: 11,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  chatActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.accent + '22',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.accent + '44',
+  },
+  avatar: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  avatarText: {
+    fontWeight: 'bold',
+    color: colors.text,
   },
   onlineDot: {
     position: 'absolute',
-    right: 0,
     bottom: 0,
+    right: 0,
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: colors.green,
+    backgroundColor: '#22c55e',
     borderWidth: 2,
     borderColor: colors.bg,
   },
-  chatHead: {
-    flex: 1,
-  },
-  chatHeadName: {
-    color: colors.text,
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  chatHeadSub: {
-    color: colors.muted,
-    fontSize: 11,
-    marginTop: 1,
-  },
-  msgList: {
-    padding: 14,
-    flexGrow: 1,
-  },
-  emptyChat: {
+  emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 60,
+    padding: 30,
+    gap: 12,
   },
-  emptyChatText: {
-    color: colors.muted,
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  emptySubtitle: {
     fontSize: 12,
-    fontStyle: 'italic',
+    color: colors.muted,
     textAlign: 'center',
+    lineHeight: 18,
   },
-  msgRow: {
+
+  // =========================
+  // ROOM STYLES
+  // =========================
+  roomTopbar: {
     flexDirection: 'row',
-    marginBottom: 10,
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: 10,
   },
-  msgRowMine: {
+  backBtn: {
+    padding: 4,
+    marginRight: 2,
+  },
+  roomHeaderCenter: {
+    flex: 1,
+  },
+  roomPartnerName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 1,
+  },
+  onlineStatusText: {
+    fontSize: 11,
+    color: '#22c55e',
+    fontWeight: '600',
+  },
+  offlineStatusText: {
+    fontSize: 11,
+    color: colors.muted,
+  },
+  centerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyChatBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    gap: 10,
+  },
+  emptyChatTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  emptyChatDesc: {
+    fontSize: 12,
+    color: colors.muted,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  messagesList: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 8,
+  },
+  dateSeparator: {
+    alignSelf: 'center',
+    backgroundColor: colors.cardAlt,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateSeparatorText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    marginVertical: 2,
+  },
+  messageRowMine: {
     justifyContent: 'flex-end',
   },
-  msgRowOther: {
+  messageRowOther: {
     justifyContent: 'flex-start',
   },
   bubble: {
-    maxWidth: '82%',
+    maxWidth: '78%',
+    paddingHorizontal: 13,
+    paddingTop: 9,
+    paddingBottom: 7,
     borderRadius: 16,
-    padding: 12,
-    gap: 4,
   },
   bubbleMine: {
-    backgroundColor: colors.accent,
-    borderBottomRightRadius: 4,
+    backgroundColor: '#4338ca',
+    borderBottomRightRadius: 3,
   },
   bubbleOther: {
     backgroundColor: colors.card,
+    borderBottomLeftRadius: 3,
     borderWidth: 1,
     borderColor: colors.border,
-    borderBottomLeftRadius: 4,
   },
-  bubbleHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.12)',
-    paddingBottom: 3,
-  },
-  bubbleName: {
-    color: colors.accentLight,
-    fontSize: 11,
-    fontWeight: 'bold',
-    flex: 1,
-  },
-  bubbleSub: {
-    color: colors.muted,
-    fontSize: 9,
-  },
-  bubbleContent: {
-    color: colors.text,
-    fontSize: 13,
+  messageText: {
+    fontSize: 13.5,
     lineHeight: 19,
   },
-  bubbleContentMine: {
-    color: '#fff',
+  messageTextMine: {
+    color: '#ffffff',
   },
-  bubbleFooter: {
+  messageTextOther: {
+    color: colors.text,
+  },
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: 3,
+    marginTop: 4,
+    gap: 4,
   },
-  bubbleTime: {
+  timeText: {
+    fontSize: 9.5,
+  },
+  timeTextMine: {
+    color: '#c7d2fe',
+  },
+  timeTextOther: {
     color: colors.muted,
-    fontSize: 9,
   },
-  bubbleTimeMine: {
-    color: 'rgba(255,255,255,0.7)',
+  statusTick: {
+    fontSize: 10,
+    color: '#a5b4fc',
+    fontWeight: 'bold',
   },
-  inputBar: {
+  inputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 10,
-    padding: 12,
+    alignItems: 'center',
     backgroundColor: colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    gap: 8,
   },
-  input: {
+  textInput: {
     flex: 1,
-    backgroundColor: colors.bg,
-    borderRadius: 12,
+    backgroundColor: colors.cardAlt,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    maxHeight: 100,
+    color: colors.text,
+    fontSize: 13,
     borderWidth: 1,
     borderColor: colors.border,
-    color: colors.text,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 10,
-    fontSize: 13,
-    maxHeight: 100,
   },
   sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendBtnDisabled: {
-    opacity: 0.5,
-  },
-  roomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 6,
-  },
-  roomTime: {
-    color: colors.muted,
-    fontSize: 11,
-    flexShrink: 0,
-  },
-  boldText: {
-    fontWeight: '700',
-    color: colors.text,
-  },
-  boldSub: {
-    fontWeight: '600',
-    color: colors.text,
-  },
-  unreadBadge: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.accent,
-    flexShrink: 0,
-    marginLeft: 6,
-  },
-  unreadBadgeText: {
-    color: '#fff',
-    fontSize: 6,
-    textAlign: 'center',
-    lineHeight: 10,
+    backgroundColor: colors.muted + '44',
   },
 });

@@ -39,6 +39,7 @@ import { requestNotifPermission, syncReminders } from './src/notifService';
 import { openLastDownload } from './src/payrollPdf';
 import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
 import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
+import { getNotificationsSummary } from './src/chatApi';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -171,6 +172,17 @@ function Main() {
     return () => sub.remove();
   }, [tab]);
 
+  const [fastNotifSummary, setFastNotifSummary] = useState(null);
+
+  const pollFastNotifs = useCallback(async () => {
+    try {
+      const res = await getNotificationsSummary();
+      if (res.success && res.data) {
+        setFastNotifSummary(res.data);
+      }
+    } catch (e) {}
+  }, []);
+
   useEffect(() => {
     if (user) {
       // 1) Tampilkan data dari cache dulu supaya dashboard instan.
@@ -183,11 +195,13 @@ function Main() {
       loadDashboard();
       loadProfile();
       loadSocial();
+      pollFastNotifs();
       tabRef.current = tab;
       pollRef.current = setInterval(() => {
         loadSocial();
+        pollFastNotifs();
         if (tabRef.current === 'chat' || tabRef.current === 'curhat') loadChat();
-      }, 30000);
+      }, 10000);
     }
     return () => {
       if (pollRef.current) {
@@ -195,7 +209,7 @@ function Main() {
         pollRef.current = null;
       }
     };
-  }, [user, loadDashboard, loadProfile, loadSocial, loadChat]);
+  }, [user, loadDashboard, loadProfile, loadSocial, loadChat, pollFastNotifs]);
 
   tabRef.current = tab;
 
@@ -289,7 +303,11 @@ function Main() {
   const seenSet = new Set(lastSeen?.seen || []);
   const notifCount = notifList.filter((n) => !seenSet.has(n.id)).length;
   const unread = unreadCounts({ posts, rooms, lastSeen, myId: user?.id });
-  const tabBadge = { chat: unread.chat, curhat: unread.curhat };
+  const chatBadgeCount =
+    typeof fastNotifSummary?.chat_unread === 'number'
+      ? fastNotifSummary.chat_unread
+      : unread.chat;
+  const tabBadge = { chat: chatBadgeCount, curhat: unread.curhat };
   const greeting =
     hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 19 ? 'Selamat sore' : 'Selamat malam';
   const initials = (user.fullname || user.name || 'G')
