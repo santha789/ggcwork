@@ -208,7 +208,10 @@ export async function sendPunch(payload) {
   // Jika ada foto, kirim via multipart. Pakai File-as-Blob (expo-file-system v19)
   // agar biner asli terkirim & menghindari synthetic-event bug.
   if (payload.photo) {
-    const file = new File(payload.photo.uri);
+    // expo-file-system v19 File butuh absolute path, bukan URI 'file://'
+    const fileUrl = payload.photo.uri || '';
+    const absPath = fileUrl.replace(/^file:\/\//, '');
+    const file = new File(absPath);
     const form = new FormData();
     form.append('punch_type', payload.punch_type);
     form.append('lat', String(payload.lat));
