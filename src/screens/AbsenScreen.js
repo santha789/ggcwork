@@ -282,12 +282,12 @@ export default function AbsenScreen({ onLoggedOut }) {
       );
       return;
     }
-    if (punching) return;
-
-    // Foto selfie sebagai bukti evident wajib diambil di setiap absen.
+    // Foto selfie sebagai bukti evident:
+    // HANYA jika karyawan DIBEBASKAN absen di mana saja (allowAnywhere).
+    // Karyawan standar dalam radius kantor TIDAK PERLU foto (cukup 1-tap absen).
     const validUriArg = (typeof photoUriArg === 'string' && photoUriArg.length > 0) ? photoUriArg : null;
     const uri = validUriArg || (typeof photoUri === 'string' ? photoUri : null);
-    if (!uri) {
+    if (allowAnywhere && !uri) {
       openCamera();
       return;
     }
@@ -296,11 +296,11 @@ export default function AbsenScreen({ onLoggedOut }) {
     try {
       const loc = location || (await getCurrentLocation());
       const payload = await buildPunchPayload(punchType, office, loc, {
-        photo: {
+        photo: uri ? {
           uri: uri,
           name: 'selfie.jpg',
           type: 'image/jpeg',
-        },
+        } : null,
         batteryLevel: null,
       });
       const res = await sendPunch(payload);
@@ -654,11 +654,11 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
         ? 'Terbuka pukul ' + fmtClock(inOpenMin) + ' WIB'
         : !inside && distance !== null
           ? allowAnywhere
-            ? 'Absen lokasi bebas'
+            ? (hasPhoto ? 'Foto selfie siap' : 'Wajib selfie (lokasi bebas)')
             : 'Di luar radius ' + radius + ' m'
-          : hasPhoto
-            ? 'Foto bukti siap'
-            : 'Ambil foto selfie sebagai bukti';
+          : allowAnywhere
+            ? (hasPhoto ? 'Foto selfie siap' : 'Wajib selfie (lokasi bebas)')
+            : 'Sentuh untuk absen langsung';
 
   const gradColors = active ? [colors.indigo, colors.accent] : [colors.cardAlt, colors.cardAlt];
   const glyphColor = active ? '#fff' : colors.muted;
