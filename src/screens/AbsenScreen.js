@@ -285,7 +285,8 @@ export default function AbsenScreen({ onLoggedOut }) {
     if (punching) return;
 
     // Foto selfie sebagai bukti evident wajib diambil di setiap absen.
-    const uri = photoUriArg || photoUri;
+    const validUriArg = (typeof photoUriArg === 'string' && photoUriArg.length > 0) ? photoUriArg : null;
+    const uri = validUriArg || (typeof photoUri === 'string' ? photoUri : null);
     if (!uri) {
       openCamera();
       return;

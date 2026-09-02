@@ -4,7 +4,6 @@ import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import * as Location from 'expo-location';
-import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 const BASE = 'https://hrmggc.ggclinkgroup.com';
@@ -205,13 +204,13 @@ export async function sendPunch(payload) {
   if (!token) throw new Error('Sesi absen tidak ditemukan.');
   const key = await Crypto.randomUUID();
 
-  // Jika ada foto, kirim via multipart. Pakai File-as-Blob (expo-file-system v19)
-  // agar biner asli terkirim & menghindari synthetic-event bug.
-  if (payload.photo) {
-    // expo-file-system v19 File butuh absolute path, bukan URI 'file://'
-    const fileUrl = payload.photo.uri || '';
-    const absPath = fileUrl.replace(/^file:\/\//, '');
-    const file = new File(absPath);
+  // Validasi & ekstrak string photo URI jika ada
+  const photoUri = typeof payload.photo === 'string'
+    ? payload.photo
+    : (payload.photo && typeof payload.photo.uri === 'string' ? payload.photo.uri : null);
+
+  // Jika ada foto, kirim via multipart FormData React Native
+  if (photoUri) {
     const form = new FormData();
     form.append('punch_type', payload.punch_type);
     form.append('lat', String(payload.lat));
@@ -233,6 +232,7 @@ export async function sendPunch(payload) {
     }
     form.append('timestamp', payload.timestamp);
     form.append('timezone', payload.timezone);
+    
     // device_info sbg array multipart (backend validasi array)
     const di = payload.device_info || {};
     Object.keys(di).forEach((k) => {
@@ -249,7 +249,12 @@ export async function sendPunch(payload) {
         form.append(`device_info[${k}]`, String(v));
       }
     });
-    form.append('photo', file, payload.photo.name || 'selfie.jpg');
+
+    form.append('photo', {
+      uri: photoUri,
+      name: payload.photo?.name || 'selfie.jpg',
+      type: payload.photo?.type || 'image/jpeg',
+    });
 
     const res = await multipartRequest('POST', '/api/attendance/punch', form, {
       token,
@@ -459,3 +464,58 @@ export function toIsoWithOffset(date, timezone) {
     return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}:${p(date.getSeconds())}+07:00`;
   }
 }
+
+export async function getShiftExchangeMyRequests(page = 1) {
+  const token = await getStoredToken();
+  if (!token) throw new Error('Sesi absen tidak ditemukan.');
+  const res = await jsonRequest('GET', `/api/shift-exchanges/my-requests?page=${page}`, null, { token });
+  if (res.status === 401) {
+    const err = new Error('Sesi berakhir. Silakan login ulang.');
+    err.unauthorized = true;
+    throw err;
+  }
+  if (res.status !== 200) throw new Error(res.data?.message || 'Gagal memuat pengajuan tukar shift.');
+  return res.data;
+}
+
+export async function getShiftExchangeRosterInfo(date) {
+  const token = await getStoredToken();
+  if (!token) throw new Error('Sesi absen tidak ditemukan.');
+  const res = await jsonRequest('GET', `/api/shift-exchanges/roster-info?date=${date}`, null, { token });
+  if (res.status === 401) {
+    const err = new Error('Sesi berakhir. Silakan login ulang.');
+    err.unauthorized = true;
+    throw err;
+  }
+  if (res.status !== 200) throw new Error(res.data?.message || 'Gagal memuat info shift.');
+  return res.data;
+}
+
+export async function submitShiftExchangeRequest(payload) {
+  const token = await getStoredToken();
+  if (!token) throw new Error('Sesi absen tidak ditemukan.');
+  const res = await jsonRequest('POST', '/api/shift-exchanges/request', payload, { token });
+  if (res.status === 401) {
+    const err = new Error('Sesi berakhir. Silakan login ulang.');
+    err.unauthorized = true;
+    throw err;
+  }
+  if (res.status !== 201 && res.status !== 200) {
+    throw new Error(res.data?.message || res.data?.errors?.date?.[0] || 'Gagal mengajukan tukar shift.');
+  }
+  return res.data;
+}
+
+export async function cancelShiftExchangeRequest(id) {
+  const token = await getStoredToken();
+  if (!token) throw new Error('Sesi absen tidak ditemukan.');
+  const res = await jsonRequest('DELETE', `/api/shift-exchanges/${id}/cancel`, null, { token });
+  if (res.status === 401) {
+    const err = new Error('Sesi berakhir. Silakan login ulang.');
+    err.unauthorized = true;
+    throw err;
+  }
+  if (res.status !== 200) throw new Error(res.data?.message || 'Gagal membatalkan pengajuan.');
+  return res.data;
+}
+
