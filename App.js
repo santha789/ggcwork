@@ -69,6 +69,7 @@ function Main() {
   const [lastSeen, setLastSeen] = useState(null);
   const [chatTarget, setChatTarget] = useState(null);
   const [curhatTarget, setCurhatTarget] = useState(null);
+  const [inChatRoom, setInChatRoom] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const pollRef = useRef(null);
   const tabRef = useRef(tab);
@@ -501,8 +502,6 @@ function Main() {
         );
     }
   };
-
-  const [inChatRoom, setInChatRoom] = useState(false);
 
   const screen = renderScreen();
 
