@@ -97,37 +97,32 @@ function jsonRequest(method, path, body, { token, idempotencyKey } = {}) {
 }
 
 // Multipart request untuk punch berfoto (bukti evident). Mendukung FormData.
-function multipartRequest(method, path, formData, { token, idempotencyKey } = {}) {
-  return new Promise((resolve, reject) => {
-    const attempt = (retry) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open(method, BASE + path);
-      xhr.setRequestHeader('Accept', 'application/json');
-      if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
-      if (idempotencyKey) xhr.setRequestHeader('Idempotency-Key', idempotencyKey);
+// Gunakan fetch (bukan XMLHttpRequest) — konsisten & teruji dengan FormData di Expo Go.
+async function multipartRequest(method, path, formData, { token, idempotencyKey } = {}) {
+  const headers = {
+    Accept: 'application/json',
+  };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
 
-      xhr.onload = () => {
-        let data = null;
-        try {
-          data = JSON.parse(xhr.responseText);
-        } catch (e) {
-          data = null;
-        }
-        resolve({ status: xhr.status, data, text: xhr.responseText });
-      };
-      xhr.onerror = () => {
-        if (retry > 0) setTimeout(() => attempt(retry - 1), 1500);
-        else reject(new Error('Tidak dapat terhubung ke server. Periksa koneksi internet.'));
-      };
-      xhr.timeout = 60000;
-      xhr.ontimeout = () => {
-        if (retry > 0) setTimeout(() => attempt(retry - 1), 1500);
-        else reject(new Error('Server terlalu lama merespons.'));
-      };
-      xhr.send(formData);
-    };
-    attempt(1);
-  });
+  let res;
+  try {
+    res = await fetch(BASE + path, {
+      method,
+      headers,
+      body: formData,
+    });
+  } catch (e) {
+    throw new Error('Tidak dapat terhubung ke server. Periksa koneksi internet.');
+  }
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (e) {
+    data = null;
+  }
+  return { status: res.status, data, text: res.responseText };
 }
 
 export async function apiLogin(email, password) {
