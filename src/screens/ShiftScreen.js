@@ -31,6 +31,13 @@ function monthName(m) {
   return names[(m || 1) - 1] || m;
 }
 
+export function getLocalDateStr(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export default function ShiftScreen({ user, onBack }) {
   const [activeTab, setActiveTab] = useState('calendar'); // 'calendar' | 'exchange'
   const [data, setData] = useState(null);
@@ -54,7 +61,24 @@ export default function ShiftScreen({ user, onBack }) {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalDateStr(new Date());
+
+  const upcomingDays = useMemo(() => {
+    const list = [];
+    const daysIndo = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+    const base = new Date();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+      const dateStr = getLocalDateStr(d);
+      list.push({
+        dateStr,
+        dayName: i === 0 ? 'Hari Ini' : (i === 1 ? 'Besok' : daysIndo[d.getDay()]),
+        dateNum: `${d.getDate()}/${d.getMonth() + 1}`,
+        isToday: i === 0,
+      });
+    }
+    return list;
+  }, []);
 
   const loadCalendar = useCallback(async (m, y) => {
     try {
@@ -112,12 +136,29 @@ export default function ShiftScreen({ user, onBack }) {
     setViewYear(y);
   }
 
+  async function changeDateInModal(newDateStr) {
+    if (newDateStr < todayStr) return;
+    setSelectedDate(newDateStr);
+    setSelectedPartnerId(null);
+    setSelectedShiftId(null);
+    setLoadingRosterInfo(true);
+    try {
+      const info = await getShiftExchangeRosterInfo(newDateStr);
+      setRosterInfo(info.data || null);
+    } catch (e) {
+      Alert.alert('Gagal', e.message || 'Tidak dapat memuat info shift pada tanggal tersebut.');
+    } finally {
+      setLoadingRosterInfo(false);
+    }
+  }
+
   async function openExchangeForDate(dateStr) {
-    if (dateStr < todayStr) {
+    const targetDate = dateStr || todayStr;
+    if (targetDate < todayStr) {
       Alert.alert('Info', 'Pengajuan tukar shift tidak dapat dilakukan untuk hari mundur (tanggal yang sudah lewat).');
       return;
     }
-    setSelectedDate(dateStr);
+    setSelectedDate(targetDate);
     setSelectedPartnerId(null);
     setSelectedShiftId(null);
     setReason('');
@@ -126,7 +167,7 @@ export default function ShiftScreen({ user, onBack }) {
     setLoadingRosterInfo(true);
 
     try {
-      const info = await getShiftExchangeRosterInfo(dateStr);
+      const info = await getShiftExchangeRosterInfo(targetDate);
       setRosterInfo(info.data || null);
     } catch (e) {
       Alert.alert('Gagal', e.message || 'Tidak dapat memuat info shift pada tanggal tersebut.');
@@ -485,13 +526,39 @@ export default function ShiftScreen({ user, onBack }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Pengajuan Tukar Shift</Text>
-                <Text style={styles.modalSubtitle}>Tanggal: {selectedDate}</Text>
+                <Text style={styles.modalSubtitle}>Pilih tanggal shift yang ingin diajukan:</Text>
               </View>
               <TouchableOpacity onPress={() => setExchangeModalOpen(false)}>
                 <MaterialIcons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
+            </View>
+
+            {/* Date selector chips */}
+            <View style={{ marginBottom: 14 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
+                {upcomingDays.map((item) => {
+                  const isSelected = selectedDate === item.dateStr;
+                  return (
+                    <TouchableOpacity
+                      key={item.dateStr}
+                      onPress={() => changeDateInModal(item.dateStr)}
+                      style={[
+                        styles.dateChip,
+                        isSelected && styles.dateChipActive,
+                      ]}
+                    >
+                      <Text style={[styles.dateChipDay, isSelected && styles.dateChipTextActive]}>
+                        {item.dayName}
+                      </Text>
+                      <Text style={[styles.dateChipDate, isSelected && styles.dateChipTextActive]}>
+                        {item.dateNum}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             {loadingRosterInfo ? (
@@ -1049,5 +1116,33 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 13,
+  },
+  dateChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: colors.cardAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    minWidth: 62,
+  },
+  dateChipActive: {
+    backgroundColor: colors.accent + '33',
+    borderColor: colors.accent,
+  },
+  dateChipDay: {
+    fontSize: 10,
+    color: colors.muted,
+    fontWeight: '600',
+  },
+  dateChipDate: {
+    fontSize: 12,
+    color: colors.text,
+    fontWeight: 'bold',
+    marginTop: 1,
+  },
+  dateChipTextActive: {
+    color: colors.accentLight,
   },
 });
