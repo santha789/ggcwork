@@ -4,6 +4,7 @@ import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import * as Location from 'expo-location';
+import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 const BASE = 'https://hrmggc.ggclinkgroup.com';
@@ -96,8 +97,8 @@ function jsonRequest(method, path, body, { token, idempotencyKey } = {}) {
   });
 }
 
-// Multipart request untuk punch berfoto (bukti evident). Mendukung FormData.
-// Gunakan fetch (bukan XMLHttpRequest) — konsisten & teruji dengan FormData di Expo Go.
+// Multipart request utk punch berfoto. Memakai RN FormData dengan File-as-Blob
+// (expo-file-system v19) utk mengirim biner asli, menghindari bug uri-object.
 async function multipartRequest(method, path, formData, { token, idempotencyKey } = {}) {
   const headers = {
     Accept: 'application/json',
@@ -122,7 +123,7 @@ async function multipartRequest(method, path, formData, { token, idempotencyKey 
   } catch (e) {
     data = null;
   }
-  return { status: res.status, data, text: res.responseText };
+  return { status: res.status, data, text: '' };
 }
 
 export async function apiLogin(email, password) {
@@ -201,9 +202,10 @@ export async function sendPunch(payload) {
   if (!token) throw new Error('Sesi absen tidak ditemukan.');
   const key = await Crypto.randomUUID();
 
-  // Jika ada foto, kirim via multipart/form-data dengan field lain sebagai form fields
-  // (backend menyimpan meta seperti lat/lng/device_info dll dari form fields ini).
+  // Jika ada foto, kirim via multipart. Pakai File-as-Blob (expo-file-system v19)
+  // agar biner asli terkirim & menghindari synthetic-event bug.
   if (payload.photo) {
+    const file = new File(payload.photo.uri);
     const form = new FormData();
     form.append('punch_type', payload.punch_type);
     form.append('lat', String(payload.lat));
@@ -225,25 +227,23 @@ export async function sendPunch(payload) {
     }
     form.append('timestamp', payload.timestamp);
     form.append('timezone', payload.timezone);
-    // device_info dikirim sebagai array multipart (backend mengharapkan array, bukan string JSON)
+    // device_info sbg array multipart (backend validasi array)
     const di = payload.device_info || {};
     Object.keys(di).forEach((k) => {
       const v = di[k];
       if (v === null || v === undefined) return;
-      if (typeof v === 'object') {
+      if (typeof v === 'object' && !Array.isArray(v)) {
         Object.keys(v).forEach((kk) => {
           const vv = v[kk];
-          if (vv !== null && vv !== undefined) form.append(`device_info[${k}][${kk}]`, String(vv));
+          if (vv !== null && vv !== undefined) {
+            form.append(`device_info[${k}][${kk}]`, String(vv));
+          }
         });
       } else {
         form.append(`device_info[${k}]`, String(v));
       }
     });
-    form.append('photo', {
-      uri: payload.photo.uri,
-      name: payload.photo.name || 'selfie.jpg',
-      type: payload.photo.type || 'image/jpeg',
-    });
+    form.append('photo', file, payload.photo.name || 'selfie.jpg');
 
     const res = await multipartRequest('POST', '/api/attendance/punch', form, {
       token,
