@@ -23,7 +23,9 @@ import {
   buildPunchPayload,
   sendPunch,
   haversineMeters,
+  reverseGeocode,
   apiLogin,
+  apiMe,
   getStoredToken,
   getStoredLoginEmail,
 } from '../attendanceApi';
@@ -113,6 +115,8 @@ export default function AbsenScreen({ onLoggedOut }) {
   const [photoOpen, setPhotoOpen] = useState(false);
   const [photoUri, setPhotoUri] = useState(null);
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [address, setAddress] = useState(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const cameraRef = useRef(null);
 
@@ -134,9 +138,18 @@ export default function AbsenScreen({ onLoggedOut }) {
     return list;
   }, []);
 
+  const loadUser = useCallback(async () => {
+    try {
+      const res = await apiMe();
+      if (res?.user) setUser(res.user);
+    } catch (e) {
+      // izin/token bisa beirmasalah; jangan fatal — hanya profil overlay
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
-      await Promise.all([loadToday(), loadOffices()]);
+      await Promise.all([loadToday(), loadOffices(), loadUser()]);
     } catch (e) {
       if (e.unauthorized && onLoggedOut) {
         Alert.alert('Sesi berakhir', e.message, [{ text: 'OK', onPress: onLoggedOut }]);
@@ -144,7 +157,7 @@ export default function AbsenScreen({ onLoggedOut }) {
         setError(e.message);
       }
     }
-  }, [loadToday, loadOffices, onLoggedOut]);
+  }, [loadToday, loadOffices, loadUser, onLoggedOut]);
 
   useEffect(() => {
     (async () => {
@@ -157,7 +170,7 @@ export default function AbsenScreen({ onLoggedOut }) {
           setLoading(false);
           return;
         }
-        await Promise.all([loadToday(), loadOffices()]);
+        await Promise.all([loadToday(), loadOffices(), loadUser()]);
         setError('');
       } catch (e) {
         if (e.unauthorized && onLoggedOut) {
@@ -174,7 +187,7 @@ export default function AbsenScreen({ onLoggedOut }) {
         setLoading(false);
       }
     })();
-  }, [loadToday, loadOffices, onLoggedOut]);
+  }, [loadToday, loadOffices, loadUser, onLoggedOut]);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -345,6 +358,11 @@ export default function AbsenScreen({ onLoggedOut }) {
       }
     }
     setPhotoOpen(true);
+    // Siapkan alamat reverse-geocode utk overlay live kamera (bila belum ada & punya lokasi)
+    if (!address && location) {
+      const addr = await reverseGeocode(location.coords.latitude, location.coords.longitude);
+      if (addr) setAddress(addr);
+    }
   }
 
   async function snapPhoto() {
@@ -445,6 +463,14 @@ export default function AbsenScreen({ onLoggedOut }) {
         visible={photoOpen}
         loading={photoLoading}
         cameraRef={cameraRef}
+        user={user}
+        now={now}
+        location={location}
+        distance={distance}
+        radius={office?.radius_m || 100}
+        office={office}
+        address={address}
+        allowAnywhere={allowAnywhere}
         onSnap={snapPhoto}
         onClose={() => setPhotoOpen(false)}
       />
@@ -716,7 +742,15 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
   );
 }
 
-function CameraModal({ visible, loading, cameraRef, onSnap, onClose }) {
+function CameraModal({ visible, loading, cameraRef, user, now, location, distance, radius, office, address, allowAnywhere, onSnap, onClose }) {
+  const name = user?.fullname || user?.firstname || '';
+  const division = user?.division || user?.sub_division || user?.position || '';
+  const liveClock = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const lat = location?.coords?.latitude;
+  const lng = location?.coords?.longitude;
+  const coordText = lat !== undefined && lng !== undefined
+    ? lat.toFixed(6) + ', ' + lng.toFixed(6)
+    : 'Lokasi aktif';
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.cameraOverlay}>
@@ -727,14 +761,44 @@ function CameraModal({ visible, loading, cameraRef, onSnap, onClose }) {
           </TouchableOpacity>
         </View>
 
-        <CameraView
-          ref={cameraRef}
-          style={styles.camera}
-          facing="front"
-        />
+        <View style={styles.cameraStage}>
+          <CameraView ref={cameraRef} style={styles.camera} facing="front" />
+
+          <View style={styles.cameraInfoOverlay} pointerEvents="none">
+            <View style={styles.cameraInfoRow}>
+              <MaterialIcons name="person" size={13} color="#fff" />
+              <Text style={styles.cameraInfoText}>
+                {name || '-'}{division ? ' • ' + division : ''}
+              </Text>
+            </View>
+            <View style={styles.cameraInfoRow}>
+              <MaterialIcons name="schedule" size={13} color="#fff" />
+              <Text style={styles.cameraInfoText}>{liveClock} WIB</Text>
+            </View>
+            <View style={styles.cameraInfoRow}>
+              <MaterialIcons name="my-location" size={13} color="#fff" />
+              <Text style={styles.cameraInfoText}>
+                {coordText}
+                {distance !== null ? ' • ' + fmtDist(distance) + (allowAnywhere ? ' (bebas)' : ' dari kantor') : ''}
+              </Text>
+            </View>
+            {address ? (
+              <View style={styles.cameraInfoRow}>
+                <MaterialIcons name="place" size={13} color="#fff" />
+                <Text style={styles.cameraInfoText} numberOfLines={2}>{address}</Text>
+              </View>
+            ) : null}
+            <View style={styles.cameraInfoRow}>
+              <MaterialIcons name="business" size={13} color="#fff" />
+              <Text style={styles.cameraInfoText}>{office?.name || ''}</Text>
+            </View>
+          </View>
+        </View>
 
         <View style={styles.cameraFooter}>
-          <Text style={styles.cameraHint}>Posisikan wajah di tengah, dalam pencahayaan cukup.</Text>
+          <Text style={styles.cameraHint}>
+            Posisikan wajah di tengah, dalam pencahayaan cukup. Foto langsung dari kamera, bukan galeri.
+          </Text>
           <TouchableOpacity
             style={[styles.cameraBtn, loading && styles.cameraBtnDisabled]}
             onPress={onSnap}
@@ -747,7 +811,6 @@ function CameraModal({ visible, loading, cameraRef, onSnap, onClose }) {
               <MaterialIcons name="camera-alt" size={30} color="#fff" />
             )}
           </TouchableOpacity>
-          <Text style={styles.cameraHint}>Foto langsung dari kamera, bukan galeri.</Text>
         </View>
       </View>
     </Modal>
@@ -1133,8 +1196,32 @@ const styles = StyleSheet.create({
   cameraClose: {
     padding: 4,
   },
+  cameraStage: {
+    flex: 1,
+    position: 'relative',
+  },
   camera: {
     flex: 1,
+  },
+  cameraInfoOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 14,
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  cameraInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  cameraInfoText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
   },
   cameraFooter: {
     alignItems: 'center',

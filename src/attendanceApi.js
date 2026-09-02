@@ -358,6 +358,27 @@ export async function getCurrentLocation() {
   return loc;
 }
 
+export async function reverseGeocode(lat, lng) {
+  try {
+    const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+    if (!results || !results.length) return null;
+    const r = results[0];
+    return (
+      [
+        r.street || '',
+        r.district || r.city || r.subregion || '',
+        r.city || r.subregion || '',
+        r.region || '',
+        r.postalCode || '',
+      ]
+        .filter(Boolean)
+        .join(', ') || null
+    );
+  } catch (e) {
+    return null;
+  }
+}
+
 export async function collectDeviceInfo(location) {
   const mocked = isProbablyMockProvider(location);
   return {
