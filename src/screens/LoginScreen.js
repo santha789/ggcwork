@@ -96,15 +96,15 @@ export default function LoginScreen({ onLogin }) {
           <Text style={styles.subtitle}>APLIKASI KARYAWAN</Text>
 
           <View style={styles.card}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>Email / ID Pegawai / Email Kantor</Text>
             <TextInput
               style={styles.input}
               value={email}
               onChangeText={setEmail}
-              placeholder="nama@email.com"
+              placeholder="Email, ID Pegawai, atau email @ggclinkgroup.com"
               placeholderTextColor={colors.muted}
               autoCapitalize="none"
-              keyboardType="email-address"
+              keyboardType="default"
               autoCorrect={false}
             />
             <Text style={styles.label}>Password</Text>
