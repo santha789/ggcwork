@@ -69,6 +69,28 @@ function fmtClock(min) {
   );
 }
 
+function getCooldownInfo(actionState, now) {
+  if (!actionState || actionState.type !== 'clock_out') {
+    return { inCooldown: false, minutesLeft: 0, canPunchAt: null };
+  }
+  if (actionState.can_punch) {
+    return { inCooldown: false, minutesLeft: 0, canPunchAt: null };
+  }
+  const canPunchAt = actionState.can_punch_at
+    ? new Date(actionState.can_punch_at)
+    : null;
+  if (canPunchAt && !isNaN(canPunchAt.getTime())) {
+    const diffS = Math.max(0, Math.floor((canPunchAt - now) / 1000));
+    const minutesLeft = Math.ceil(diffS / 60);
+    return { inCooldown: true, minutesLeft, canPunchAt };
+  }
+  return {
+    inCooldown: true,
+    minutesLeft: actionState.cooldown_remaining_minutes || 0,
+    canPunchAt: null,
+  };
+}
+
 export default function AbsenScreen({ onLoggedOut }) {
   const [now, setNow] = useState(new Date());
   const [today, setToday] = useState(null);
@@ -207,7 +229,11 @@ export default function AbsenScreen({ onLoggedOut }) {
   const attendance = today?.attendance;
   const hasIn = !!attendance?.clock_in;
   const hasOut = !!attendance?.clock_out;
-  const punchType = !hasIn ? 'in' : !hasOut ? 'out' : null;
+  const actionState = today?.action_state || {};
+  const punchType =
+    actionState.type === 'clock_in' ? 'in'
+    : actionState.type === 'clock_out' ? 'out'
+    : null;
   const locked = today?.punch_lock?.is_locked || false;
 
   const shift = today?.shift || null;
@@ -215,6 +241,9 @@ export default function AbsenScreen({ onLoggedOut }) {
   const shiftStartMin = shift?.start_time ? timeToMin(shift.start_time) : null;
   const inOpenMin = shiftStartMin !== null ? shiftStartMin - 120 : null;
   const inGateOpen = punchType !== 'in' || inOpenMin === null || nowMin >= inOpenMin;
+
+  const cooldown = getCooldownInfo(actionState, now);
+  const cooldownActive = cooldown.inCooldown && punchType === 'out';
 
   async function doPunch() {
     if (!office) {
@@ -344,6 +373,9 @@ export default function AbsenScreen({ onLoggedOut }) {
           radius={office?.radius_m || 100}
           allowAnywhere={allowAnywhere}
           punching={punching}
+          cooldownActive={cooldownActive}
+          cooldownLeft={cooldown.minutesLeft}
+          cooldownMsg={actionState.message}
           onPunch={doPunch}
         />
       ) : null}
@@ -501,17 +533,19 @@ function LocationCard({ locating, locError, distance, radius, inside, allowAnywh
   );
 }
 
-function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, distance, radius, allowAnywhere, punching, onPunch }) {
+function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, distance, radius, allowAnywhere, punching, cooldownActive, cooldownLeft, cooldownMsg, onPunch }) {
   const attendance = today?.attendance;
   const hasIn = !!attendance?.clock_in;
   const hasOut = !!attendance?.clock_out;
   const gatedIn = punchType === 'in' && !inGateOpen;
-  const disabled = !punchType || !inside || punching || gatedIn;
-  const active = !!punchType && inside && !gatedIn && !punching;
+  const disabled = !punchType || !inside || punching || gatedIn || cooldownActive;
+  const active = !!punchType && inside && !gatedIn && !punching && !cooldownActive;
 
   const action =
     !punchType
-      ? 'Absensi Selesai'
+      ? hasOut
+        ? 'Presensi Selesai'
+        : 'Absensi Selesai'
       : punchType === 'in'
         ? 'Absen Masuk'
         : 'Absen Pulang';
@@ -520,17 +554,19 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
 
   const caption = punching
     ? 'Memproses…'
-    : gatedIn
-      ? 'Terbuka pukul ' + fmtClock(inOpenMin) + ' WIB'
-      : !inside && distance !== null
-        ? allowAnywhere
-          ? 'Absen lokasi bebas'
-          : 'Di luar radius ' + radius + ' m'
-        : punchType === 'in'
-          ? 'Boleh 2 jam sebelum shift'
-          : punchType === 'out'
-            ? 'Pulang bebas, kapan pun'
-            : 'Semua sudah tercatat';
+    : cooldownActive
+      ? 'Terkunci • ' + cooldownLeft + ' mnt lagi'
+      : gatedIn
+        ? 'Terbuka pukul ' + fmtClock(inOpenMin) + ' WIB'
+        : !inside && distance !== null
+          ? allowAnywhere
+            ? 'Absen lokasi bebas'
+            : 'Di luar radius ' + radius + ' m'
+          : punchType === 'in'
+            ? 'Boleh 2 jam sebelum shift'
+            : punchType === 'out'
+              ? 'Pulang bebas, kapan pun'
+              : 'Semua sudah tercatat';
 
   const gradColors = active ? [colors.indigo, colors.accent] : [colors.cardAlt, colors.cardAlt];
   const glyphColor = active ? '#fff' : colors.muted;
@@ -571,6 +607,13 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
           </Text>
         </View>
       </View>
+
+      {cooldownActive && cooldownMsg ? (
+        <View style={styles.cooldownBanner}>
+          <MaterialIcons name="lock-clock" size={16} color={colors.yellow} />
+          <Text style={styles.cooldownText}>{cooldownMsg}</Text>
+        </View>
+      ) : null}
 
       <TouchableOpacity
         style={[styles.punchBtnWrap, disabled && styles.punchBtnWrapDisabled]}
@@ -869,6 +912,21 @@ const styles = StyleSheet.create({
   punchTimeDev: {
     color: colors.muted,
     fontSize: 10,
+  },
+  cooldownBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.yellow + '1a',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.yellow + '55',
+  },
+  cooldownText: {
+    color: colors.text,
+    fontSize: 12,
+    flex: 1,
   },
   punchBtnWrap: {
     borderRadius: 16,
