@@ -11,6 +11,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { getPage } from '../api';
 import { colors } from '../theme';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 function timeAgo(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
@@ -162,12 +164,34 @@ export default function PengumumanScreen({ onBack }) {
   const load = useCallback(async () => {
     try {
       const props = await getPage('/announcements');
-      setItems(props.announcements || []);
+      const readRaw = await AsyncStorage.getItem('@ggcwork/read_announcements');
+      const readIds = readRaw ? JSON.parse(readRaw) : [];
+      const list = (props.announcements || []).map((i) => ({
+        ...i,
+        is_read: i.is_read || readIds.includes(String(i.id)),
+      }));
+      setItems(list);
       setError('');
     } catch (e) {
       setError(e.message || 'Gagal memuat pengumuman.');
     }
   }, []);
+
+  async function handleSelect(item) {
+    setSelected(item);
+    try {
+      const readRaw = await AsyncStorage.getItem('@ggcwork/read_announcements');
+      const readSet = new Set(readRaw ? JSON.parse(readRaw) : []);
+      readSet.add(String(item.id));
+      await AsyncStorage.setItem(
+        '@ggcwork/read_announcements',
+        JSON.stringify(Array.from(readSet))
+      );
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, is_read: true } : i))
+      );
+    } catch (e) {}
+  }
 
   useEffect(() => {
     (async () => {
@@ -275,7 +299,7 @@ export default function PengumumanScreen({ onBack }) {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
           >
             {(filter === 'unread' ? items.filter((i) => !i.is_read) : filtered).map((item) => (
-              <AnnouncementCard key={item.id} item={item} onPress={setSelected} />
+              <AnnouncementCard key={item.id} item={item} onPress={handleSelect} />
             ))}
           </ScrollView>
         </>

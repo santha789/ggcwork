@@ -14,6 +14,8 @@ import { getPage } from '../api';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 function todayLabel() {
   const d = new Date();
   return d.toLocaleDateString('id-ID', {
@@ -82,6 +84,7 @@ function computeMyStats(attData) {
   let hadir = 0;
   let telat = 0;
   let alpha = 0;
+  let cuti = 0;
 
   for (let d = 1; d <= daysInMonth; d++) {
     const date = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -95,13 +98,15 @@ function computeMyStats(attData) {
     if (status === 'TAP' || status === 'Hadir' || status === 'Telat' || status === 'TAM') {
       hadir += 1;
       if ((att?.late_minutes || 0) > 0) telat += 1;
+    } else if (status === 'Izin' || status === 'Sakit' || status === 'Cuti') {
+      cuti += 1;
     } else if (date < todayStr) {
       alpha += 1;
     }
   }
 
   const pct = scheduled > 0 ? Math.round((hadir / scheduled) * 100) : 0;
-  return { month, year, scheduled, hadir, telat, alpha, pct };
+  return { month, year, scheduled, hadir, telat, alpha, cuti, pct };
 }
 
 function QuickCircle({ label, value, icon, color, onPress }) {
@@ -130,6 +135,7 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
   const [dash, setDash] = useState(initial || null);
   const [attData, setAttData] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [pageW, setPageW] = useState(0);
@@ -138,14 +144,23 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
 
   const load = useCallback(async () => {
     try {
-      const [d, a, p] = await Promise.all([
+      const [d, a, p, annRes] = await Promise.all([
         getPage('/dashboard'),
         getPage('/attendance/summary'),
         getPage('/profile'),
+        getPage('/announcements').catch(() => ({ announcements: [] })),
       ]);
       setDash(d);
       setAttData({ ...a, myId: user?.id });
       setProfile(p.userProfile || null);
+
+      const readRaw = await AsyncStorage.getItem('@ggcwork/read_announcements');
+      const readIds = readRaw ? JSON.parse(readRaw) : [];
+      const annList = (annRes?.announcements || []).map((i) => ({
+        ...i,
+        is_read: i.is_read || readIds.includes(String(i.id)),
+      }));
+      setAnnouncements(annList);
       setError('');
     } catch (e) {
       setError(e.message);
@@ -172,6 +187,9 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
   const s = computeMyStats(attData);
   const pendingLeaves = dash.pendingLeaves || [];
   const kontrak = contractInfo(profile);
+  const unreadAnnouncements = (announcements || []).filter((i) => !i.is_read);
+  const unreadAnnouncementsCount = unreadAnnouncements.length;
+  const latestUnread = unreadAnnouncements[0];
 
   return (
     <ScrollView
@@ -218,6 +236,10 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
             <Text style={[styles.attStatVal, { color: colors.red }]}>{s.alpha}</Text>
             <Text style={styles.attStatLabel}>Alpha</Text>
           </View>
+          <View style={styles.attStat}>
+            <Text style={[styles.attStatVal, { color: colors.purple }]}>{s.cuti}</Text>
+            <Text style={styles.attStatLabel}>Izin/Sakit</Text>
+          </View>
         </View>
         {kontrak && (
           <View style={styles.contractRow}>
@@ -240,6 +262,34 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
           </View>
         )}
       </LinearGradient>
+
+      {unreadAnnouncementsCount > 0 && (
+        <TouchableOpacity
+          style={styles.announcementCard}
+          onPress={onOpenPengumuman}
+          activeOpacity={0.85}
+        >
+          <View style={styles.announcementLeft}>
+            <View style={styles.announcementIconBg}>
+              <MaterialIcons name="campaign" size={22} color="#fff" />
+            </View>
+            <View style={styles.announcementBody}>
+              <View style={styles.announcementHeaderRow}>
+                <Text style={styles.announcementCardTitle}>Pengumuman Baru</Text>
+                <View style={styles.unreadCountBadge}>
+                  <Text style={styles.unreadCountBadgeText}>
+                    {unreadAnnouncementsCount} Belum Dibaca
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.announcementCardSub} numberOfLines={1}>
+                {latestUnread?.title || 'Ada pengumuman resmi yang belum Anda baca.'}
+              </Text>
+            </View>
+          </View>
+          <MaterialIcons name="chevron-right" size={22} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+      )}
 
       <Text style={styles.sectionHead}>Menu Cepat</Text>
       <View
@@ -313,6 +363,7 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
           <View style={[styles.quickPage, { width: pageW || '100%' }]}>
             <QuickCircle
               label="Pengumuman"
+              value={unreadAnnouncementsCount}
               icon="campaign"
               color={colors.red}
               onPress={onOpenPengumuman}
@@ -479,6 +530,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+  },
+  announcementCard: {
+    backgroundColor: '#881337',
+    borderRadius: 18,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#f43f5e',
+  },
+  announcementLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  announcementIconBg: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  announcementBody: {
+    flex: 1,
+    gap: 2,
+  },
+  announcementHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  announcementCardTitle: {
+    color: '#ffffff',
+    fontSize: 13.5,
+    fontWeight: 'bold',
+  },
+  unreadCountBadge: {
+    backgroundColor: '#fff1f2',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  unreadCountBadgeText: {
+    color: '#be123c',
+    fontSize: 9.5,
+    fontWeight: '800',
+  },
+  announcementCardSub: {
+    color: '#fecdd3',
+    fontSize: 11.5,
   },
   quickCard: {
     backgroundColor: colors.card,
