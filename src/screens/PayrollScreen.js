@@ -82,7 +82,9 @@ export default function PayrollScreen({ user, onBack }) {
   if (error) return <Error message={error} onRetry={() => load(viewMonth, viewYear)} />;
   if (!data) return <Loading />;
 
-  const payrolls = data.payrolls || [];
+  const payrolls = Array.isArray(data.payrolls)
+    ? data.payrolls
+    : data.payrolls?.data || [];
 
   return (
     <View style={styles.container}>
@@ -125,14 +127,15 @@ export default function PayrollScreen({ user, onBack }) {
           </View>
         ) : (
           payrolls.map((p) => <PayrollCard key={p.id} pay={p} />)
-        )}      </ScrollView>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
 function PayrollCard({ pay }) {
   const st = statusInfo(pay.status);
-  const comps = pay.payroll_components || [];
+  const comps = pay.payroll_components || pay.payrollComponents || [];
   const allowances = comps.filter((c) => c.type === 'allowance');
   const deductions = comps.filter((c) => c.type === 'deduction');
   const u = pay.user || {};
