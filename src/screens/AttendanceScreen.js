@@ -30,9 +30,47 @@ function fmtTime(t) {
   return t.slice(0, 5);
 }
 
-// Ikuti logika Summary.vue web: label + warna + title per hari.
+function getDeviceType(att) {
+  if (!att) return null;
+  const inDev = att.clock_in_device;
+  const outDev = att.clock_out_device;
+
+  if (!att.clock_in && !att.clock_out && !['Hadir', 'Telat', 'TAM', 'TAP'].includes(att.status)) {
+    return null;
+  }
+
+  const isBioIn = inDev && inDev !== 'app';
+  const isBioOut = outDev && outDev !== 'app';
+  const isAppIn = inDev === 'app';
+  const isAppOut = outDev === 'app';
+
+  if ((isBioIn && isAppOut) || (isAppIn && isBioOut)) {
+    return 'both';
+  }
+  if (isBioIn || isBioOut) {
+    return 'biocloud';
+  }
+  if (isAppIn || isAppOut) {
+    return 'app';
+  }
+  if (att.clock_in || att.clock_out || ['Hadir', 'Telat', 'TAM', 'TAP'].includes(att.status)) {
+    return 'biocloud';
+  }
+  return null;
+}
+
+// Ikuti logika Summary.vue web: label + warna + title + deviceType per hari.
 function getCellData(date, roster, att) {
   const isRosterDayOff = !!roster && (roster.is_day_off || !roster.shift_id);
+  const deviceType = getDeviceType(att);
+  const devText =
+    deviceType === 'both'
+      ? `🔵 Masuk: ${att?.clock_in_device === 'app' ? 'Aplikasi' : 'BioCloud'} | ⚪ Pulang: ${att?.clock_out_device === 'app' ? 'Aplikasi' : 'BioCloud'}`
+      : deviceType === 'biocloud'
+      ? '🔵 Mesin BioCloud'
+      : deviceType === 'app'
+      ? '⚪ Aplikasi Mobile'
+      : '';
 
   if (isRosterDayOff) {
     if (att && (att.status === 'Hadir' || att.status === 'Telat' || att.status === 'TAM' || att.status === 'TAP')) {
@@ -41,6 +79,9 @@ function getCellData(date, roster, att) {
         color: colors.green,
         bg: colors.green + '26',
         title: `Masuk / Tukar Shift (Masuk: ${fmtTime(att.clock_in)})`,
+        att,
+        deviceType,
+        devText,
       };
     }
     if (att && (att.status === 'Izin' || att.status === 'Sakit')) {
@@ -49,40 +90,43 @@ function getCellData(date, roster, att) {
         color: colors.purple,
         bg: colors.purple + '26',
         title: `${att.status}${att.notes ? ' - ' + att.notes : ''}`,
+        att,
+        deviceType: null,
+        devText: '',
       };
     }
-    return { label: 'L', color: colors.muted, bg: colors.border + '66', title: 'Libur Roster (OFF)' };
+    return { label: 'L', color: colors.muted, bg: colors.border + '66', title: 'Libur Roster (OFF)', att, deviceType: null, devText: '' };
   }
 
   if (att) {
     if (att.status === 'Hadir') {
-      return { label: 'T', color: colors.green, bg: colors.green + '26', title: `Hadir (Masuk: ${fmtTime(att.clock_in)})` };
+      return { label: 'T', color: colors.green, bg: colors.green + '26', title: `Hadir (Masuk: ${fmtTime(att.clock_in)})`, att, deviceType, devText };
     }
     if (att.status === 'Telat') {
-      return { label: 'T', color: colors.yellow, bg: colors.yellow + '26', title: `Telat (${att.late_minutes || 0} menit, Masuk: ${fmtTime(att.clock_in)})` };
+      return { label: 'T', color: colors.yellow, bg: colors.yellow + '26', title: `Telat (${att.late_minutes || 0} menit, Masuk: ${fmtTime(att.clock_in)})`, att, deviceType, devText };
     }
     if (att.status === 'TAM' || att.status === 'TAP') {
-      return { label: 'T', color: colors.accentLight, bg: colors.accentLight + '26', title: `${att.status} (Masuk: ${fmtTime(att.clock_in)}, Pulang: ${fmtTime(att.clock_out)})` };
+      return { label: 'T', color: colors.accentLight, bg: colors.accentLight + '26', title: `${att.status} (Masuk: ${fmtTime(att.clock_in)}, Pulang: ${fmtTime(att.clock_out)})`, att, deviceType, devText };
     }
     if (att.status === 'Alpha') {
-      return { label: 'X', color: colors.red, bg: colors.red + '26', title: 'Alpha / Tidak Absen Pada Hari Kerja' };
+      return { label: 'X', color: colors.red, bg: colors.red + '26', title: 'Alpha / Tidak Absen Pada Hari Kerja', att, deviceType: null, devText: '' };
     }
     if (att.status === 'Izin' || att.status === 'Sakit') {
-      return { label: att.status === 'Izin' ? 'I' : 'S', color: colors.purple, bg: colors.purple + '26', title: `${att.status}${att.notes ? ' - ' + att.notes : ''}` };
+      return { label: att.status === 'Izin' ? 'I' : 'S', color: colors.purple, bg: colors.purple + '26', title: `${att.status}${att.notes ? ' - ' + att.notes : ''}`, att, deviceType: null, devText: '' };
     }
     if (att.status === 'Libur') {
-      return { label: 'L', color: colors.muted, bg: colors.border + '66', title: `Libur${att.notes ? ': ' + att.notes : ''}` };
+      return { label: 'L', color: colors.muted, bg: colors.border + '66', title: `Libur${att.notes ? ': ' + att.notes : ''}`, att, deviceType: null, devText: '' };
     }
     if (att.clock_in || att.clock_out) {
-      return { label: 'T', color: colors.green, bg: colors.green + '26', title: `Masuk / Tap BioCloud (Masuk: ${fmtTime(att.clock_in)})` };
+      return { label: 'T', color: colors.green, bg: colors.green + '26', title: `Masuk / Tap Presensi (Masuk: ${fmtTime(att.clock_in)})`, att, deviceType, devText };
     }
   }
 
   if (date <= todayStr()) {
-    return { label: 'X', color: colors.red, bg: colors.red + '26', title: 'Alpha / Tidak Absen Pada Hari Kerja' };
+    return { label: 'X', color: colors.red, bg: colors.red + '26', title: 'Alpha / Tidak Absen Pada Hari Kerja', att: null, deviceType: null, devText: '' };
   }
 
-  return { label: '-', color: colors.muted, bg: colors.cardAlt, title: 'Mendatang' };
+  return { label: '-', color: colors.muted, bg: colors.cardAlt, title: 'Mendatang', att: null, deviceType: null, devText: '' };
 }
 
 function computeStats(days) {
@@ -297,6 +341,16 @@ function EmployeeAttendance({ row }) {
                 isSel && styles.dayCellSelected,
               ]}
             >
+              {cell.deviceType === 'both' ? (
+                <View style={styles.deviceDotBoth}>
+                  <View style={[styles.deviceDotHalf, { backgroundColor: '#38bdf8' }]} />
+                  <View style={[styles.deviceDotHalf, { backgroundColor: '#ffffff' }]} />
+                </View>
+              ) : cell.deviceType === 'biocloud' ? (
+                <View style={[styles.deviceDot, { backgroundColor: '#38bdf8' }]} />
+              ) : cell.deviceType === 'app' ? (
+                <View style={[styles.deviceDot, { backgroundColor: '#ffffff' }]} />
+              ) : null}
               <Text style={[styles.dayNum, { color: colors.muted }]}>{d.date.slice(8)}</Text>
               <Text style={[styles.dayLabel, { color: cell.color }]}>{cell.label}</Text>
             </TouchableOpacity>
@@ -310,6 +364,9 @@ function EmployeeAttendance({ row }) {
             {selected.date.slice(8)} {monthName(selected.date.slice(5, 7))} {selected.date.slice(0, 4)}
           </Text>
           <Text style={[styles.detailText, { color: selCell.color }]}>{selCell.title}</Text>
+          {selCell.devText ? (
+            <Text style={styles.detailDev}>Metode Presensi: {selCell.devText}</Text>
+          ) : null}
         </View>
       )}
 
@@ -320,6 +377,11 @@ function EmployeeAttendance({ row }) {
         <Legend color={colors.red} label="X = Alpha" />
         <Legend color={colors.purple} label="I/S = Izin·Sakit" />
         <Legend color={colors.muted} label="L = Libur" />
+        <View style={styles.legendDevRow}>
+          <Legend color="#38bdf8" label="🔵 BioCloud (Mesin)" />
+          <Legend color="#ffffff" label="⚪ Aplikasi (Mobile)" />
+          <LegendBoth label="🔵⚪ Keduanya (Split)" />
+        </View>
       </View>
     </View>
   );
@@ -329,6 +391,18 @@ function Legend({ color, label }) {
   return (
     <View style={styles.legendItem}>
       <View style={[styles.legendDot, { backgroundColor: color }]} />
+      <Text style={styles.legendText}>{label}</Text>
+    </View>
+  );
+}
+
+function LegendBoth({ label }) {
+  return (
+    <View style={styles.legendItem}>
+      <View style={styles.deviceDotBothLegend}>
+        <View style={[styles.deviceDotHalf, { backgroundColor: '#38bdf8' }]} />
+        <View style={[styles.deviceDotHalf, { backgroundColor: '#ffffff' }]} />
+      </View>
       <Text style={styles.legendText}>{label}</Text>
     </View>
   );
@@ -445,10 +519,44 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   dayCellSelected: {
     borderWidth: 2,
     borderColor: colors.text,
+  },
+  deviceDot: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 0.5,
+    borderColor: '#0f172a',
+  },
+  deviceDotBoth: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    width: 9,
+    height: 6,
+    borderRadius: 3,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: '#0f172a',
+  },
+  deviceDotHalf: {
+    flex: 1,
+    height: '100%',
+  },
+  deviceDotBothLegend: {
+    width: 9,
+    height: 7,
+    borderRadius: 3.5,
+    flexDirection: 'row',
+    overflow: 'hidden',
   },
   dayNum: {
     fontSize: 8,
@@ -474,10 +582,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  detailDev: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   legend: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  legendDevRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    marginTop: 4,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.border + '66',
   },
   legendItem: {
     flexDirection: 'row',

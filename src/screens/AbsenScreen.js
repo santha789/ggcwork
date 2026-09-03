@@ -632,6 +632,26 @@ function LocationCard({ locating, locError, distance, radius, inside, allowAnywh
   );
 }
 
+function DeviceBadge({ dev }) {
+  if (!dev) return <Text style={styles.punchTimeDev}>-</Text>;
+  const d = String(dev).toLowerCase();
+  const isApp = d === 'app' || d === 'mobile';
+  const isBio = d === 'biocloud' || d === 'mesin' || d === 'fingerprint';
+  return (
+    <View style={[styles.devBadge, isBio && styles.devBadgeBio]}>
+      <View
+        style={[
+          styles.devDot,
+          { backgroundColor: isApp ? '#ffffff' : isBio ? '#38bdf8' : colors.yellow },
+        ]}
+      />
+      <Text style={[styles.devBadgeText, { color: isApp ? '#f8fafc' : isBio ? '#38bdf8' : colors.yellow }]}>
+        {isApp ? 'Mobile App' : isBio ? 'BioCloud' : dev}
+      </Text>
+    </View>
+  );
+}
+
 function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, distance, radius, allowAnywhere, punching, cooldownActive, cooldownLeft, cooldownMsg, hasPhoto, onPunch }) {
   const attendance = today?.attendance;
   const hasIn = !!attendance?.clock_in;
@@ -690,18 +710,14 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
           <Text style={[styles.punchTimeVal, hasIn && styles.punchTimeDone]}>
             {fmtTime(attendance?.clock_in)}
           </Text>
-          <Text style={styles.punchTimeDev}>
-            {attendance?.clock_in_device || '-'}
-          </Text>
+          <DeviceBadge dev={attendance?.clock_in_device} />
         </View>
         <View style={styles.punchTimeBox}>
           <Text style={styles.punchTimeLabel}>Pulang</Text>
           <Text style={[styles.punchTimeVal, hasOut && styles.punchTimeDone]}>
             {fmtTime(attendance?.clock_out)}
           </Text>
-          <Text style={styles.punchTimeDev}>
-            {attendance?.clock_out_device || '-'}
-          </Text>
+          <DeviceBadge dev={attendance?.clock_out_device} />
         </View>
       </View>
 
@@ -1087,6 +1103,31 @@ const styles = StyleSheet.create({
   punchTimeDev: {
     color: colors.muted,
     fontSize: 10,
+  },
+  devBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  devBadgeBio: {
+    backgroundColor: 'rgba(3,105,161,0.25)',
+    borderColor: 'rgba(56,189,248,0.4)',
+  },
+  devDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  devBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   cooldownBanner: {
     flexDirection: 'row',
