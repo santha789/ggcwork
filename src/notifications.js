@@ -92,6 +92,69 @@ function birthdayReminders(birthdayUsers) {
   return list;
 }
 
+function checkoutReminders({ attendanceToday, shift }) {
+  const list = [];
+  if (!shift?.end_time) return list;
+
+  const attendance = attendanceToday?.attendance;
+  const hasIn = !!attendance?.clock_in;
+  const hasOut = !!attendance?.clock_out;
+
+  // Only remind if already clocked in but hasn't clocked out
+  if (!hasIn || hasOut) return list;
+
+  const now = new Date();
+  const [endHour, endMin] = shift.end_time.split(':').map(Number);
+  const endTimeMin = endHour * 60 + (endMin || 0);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  // 1 hour before checkout (H-60 min)
+  const reminderStartMin = endTimeMin - 60;
+
+  if (nowMin >= reminderStartMin && nowMin < endTimeMin) {
+    list.push({
+      id: 'checkout-reminder-1h',
+      type: 'checkout',
+      title: '⏰ 1 Jam Menuju Waktu Pulang',
+      message: `Shift kerja Anda berakhir pukul ${shift.end_time.slice(0, 5)} WIB. Bersiaplah untuk melakukan presensi pulang nanti.`,
+      day: 'Hari ini',
+      shift,
+    });
+  } else if (nowMin >= endTimeMin) {
+    list.push({
+      id: 'checkout-reminder-now',
+      type: 'checkout',
+      title: '🏢 Waktu Presensi Pulang Telah Tiba',
+      message: `Jam kerja shift Anda (${shift.end_time.slice(0, 5)} WIB) sudah selesai. Jangan lupa lakukan absen pulang sekarang.`,
+      day: 'Hari ini',
+      shift,
+    });
+  }
+
+  return list;
+}
+
+function announcementReminders(announcements, myId, seenAnnouncementIds) {
+  const list = [];
+  const seenSet = new Set(seenAnnouncementIds || []);
+
+  (announcements || []).forEach((a) => {
+    if (!a || !a.id) return;
+    if (a.is_read || seenSet.has('announcement-' + a.id)) return;
+
+    list.push({
+      id: 'announcement-' + a.id,
+      type: 'announcement',
+      title: '📜 Surat Pengumuman Resmi',
+      message: `${a.title} (${a.document_number || 'Official'}). Buka untuk membaca rincian surat.`,
+      day: 'Baru',
+      announcement: a,
+    });
+  });
+
+  return list;
+}
+
 function curhatReminders(posts, myId, lastCurhatId) {
   const list = [];
   (posts || []).forEach((p) => {
@@ -100,7 +163,7 @@ function curhatReminders(posts, myId, lastCurhatId) {
     list.push({
       id: 'curhat-' + p.id,
       type: 'curhat',
-      title: 'Curhat Baru',
+      title: p.type === 'announcement' ? '📢 Pengumuman Feed' : 'Curhat Baru',
       message: `${fullname(p.user)} membagikan status baru: "${(p.content || '').slice(0, 60)}${(p.content || '').length > 60 ? '…' : ''}"`,
       day: 'Baru',
       post: p,
@@ -128,25 +191,44 @@ function chatReminders(rooms, lastSeenChat) {
   return list;
 }
 
-export function computeNotifications({ dashboard, profile, posts, rooms, lastSeen, myId }) {
+export function computeNotifications({
+  dashboard,
+  profile,
+  posts,
+  rooms,
+  announcements,
+  attendanceToday,
+  shift,
+  lastSeen,
+  myId,
+}) {
   const list = [];
   const bdays = birthdayReminders(dashboard?.birthdayUsers);
   const contracts = contractReminders(profile);
   const curhats = curhatReminders(posts, myId, lastSeen?.curhatId);
   const chats = chatReminders(rooms, lastSeen?.chat);
+  const checkouts = checkoutReminders({
+    attendanceToday: attendanceToday || dashboard?.today,
+    shift: shift || dashboard?.today?.shift || dashboard?.shift,
+  });
+  const annots = announcementReminders(
+    announcements || dashboard?.announcements,
+    myId,
+    lastSeen?.seen
+  );
 
-  list.push(...bdays, ...contracts, ...curhats, ...chats);
+  list.push(...checkouts, ...annots, ...bdays, ...contracts, ...curhats, ...chats);
 
-  const order = { birthday: 1, contract: 2, curhat: 3, chat: 4 };
+  const order = { checkout: 0, announcement: 1, birthday: 2, contract: 3, curhat: 4, chat: 5 };
   return list.sort((a, b) => {
-    if (a.type !== b.type) return order[a.type] - order[b.type];
+    if (a.type !== b.type) return (order[a.type] || 99) - (order[b.type] || 99);
     const ad = a.day === 'Hari ini' || a.day === 'Baru' ? 0 : parseInt(a.day.replace('H-', ''), 10) || 99;
     const bd = b.day === 'Hari ini' || b.day === 'Baru' ? 0 : parseInt(b.day.replace('H-', ''), 10) || 99;
     return ad - bd;
   });
 }
 
-export function unreadCounts({ posts, rooms, lastSeen, myId }) {
+export function unreadCounts({ posts, rooms, announcements, lastSeen, myId }) {
   const curhat = (posts || []).filter(
     (p) => p && p.user_id !== myId && (!lastSeen?.curhatId || p.id > lastSeen.curhatId)
   ).length;
@@ -155,7 +237,10 @@ export function unreadCounts({ posts, rooms, lastSeen, myId }) {
       !lastSeen?.chat?.[r.id] ||
       new Date(r.updated_at).getTime() > new Date(lastSeen.chat[r.id]).getTime()
   ).length;
-  return { curhat, chat };
+  const announcementCount = (announcements || []).filter(
+    (a) => a && !a.is_read
+  ).length;
+  return { curhat, chat, announcement: announcementCount };
 }
 
 const NOTIF_HOUR = 8;
@@ -166,22 +251,67 @@ function atHour(day, hour, minute = 0) {
   return d;
 }
 
-export function buildSchedules({ dashboard, profile }) {
+export function buildSchedules({ dashboard, profile, attendanceToday, shift }) {
   const out = [];
   const today = startOfDay(new Date());
 
-  // Birthday notifications: only show in-app bell list, not as OS push
-  // (OS push duplicates the in-app list and causes 3x notifications)
+  // 1. Pengingat Absen Pulang (1 jam sebelum pulang & saat jam pulang)
+  const currentShift = shift || attendanceToday?.shift || dashboard?.today?.shift;
+  const attendance = attendanceToday?.attendance || dashboard?.today?.attendance;
+  const hasIn = !!attendance?.clock_in;
+  const hasOut = !!attendance?.clock_out;
 
+  if (currentShift?.end_time && hasIn && !hasOut) {
+    const [endHour, endMin] = currentShift.end_time.split(':').map(Number);
+    const now = new Date();
+    
+    // H-1 jam sebelum pulang
+    const oneHourBefore = new Date();
+    oneHourBefore.setHours(endHour - 1, endMin || 0, 0, 0);
+    if (oneHourBefore.getTime() > now.getTime()) {
+      out.push({
+        key: `checkout-remind-1h-${today.toISOString().slice(0, 10)}`,
+        date: oneHourBefore,
+        title: '⏰ 1 Jam Menuju Waktu Pulang',
+        message: `Shift kerja Anda berakhir pukul ${currentShift.end_time.slice(0, 5)} WIB. Siap-siap untuk absen pulang!`,
+        type: 'checkout',
+      });
+    }
+
+    // Tepat jam pulang
+    const exactCheckout = new Date();
+    exactCheckout.setHours(endHour, endMin || 0, 0, 0);
+    if (exactCheckout.getTime() > now.getTime()) {
+      out.push({
+        key: `checkout-remind-now-${today.toISOString().slice(0, 10)}`,
+        date: exactCheckout,
+        title: '🏢 Waktu Pulang Kerja Telah Tiba',
+        message: `Jam kerja shift Anda (${currentShift.end_time.slice(0, 5)} WIB) sudah selesai. Jangan lupa absen pulang di GGC Work.`,
+        type: 'checkout',
+      });
+    }
+
+    // 30 menit setelah jam pulang (bila belum absen)
+    const thirtyMinAfter = new Date();
+    thirtyMinAfter.setHours(endHour, (endMin || 0) + 30, 0, 0);
+    if (thirtyMinAfter.getTime() > now.getTime()) {
+      out.push({
+        key: `checkout-remind-after-${today.toISOString().slice(0, 10)}`,
+        date: thirtyMinAfter,
+        title: '⚠️ Pengingat Presensi Pulang',
+        message: `Anda belum melakukan presensi pulang hari ini. Buka GGC Work sekarang untuk melakukan absen pulang.`,
+        type: 'checkout',
+      });
+    }
+  }
+
+  // 2. Pengingat Kontrak Kerja
   const userProfile = profile?.userProfile || profile;
   const contracts = userProfile.contracts || profile?.contracts || [];
   const activeContract = contracts.find((c) => c.status === 'active') || contracts[0];
   const endDate = activeContract?.end_date || userProfile.end_date;
   if (endDate) {
     const end = new Date(endDate + 'T00:00:00');
-    const name = fullname(userProfile);
-    const target = atHour(end, NOTIF_HOUR);
-
     [
       [30, `Kontrak kamu berakhir dalam 30 hari lagi (${endDate}). Segera hubungi HR.`],
       [7, `Kontrak kamu berakhir dalam 7 hari lagi (${endDate}). Segera koordinasikan dengan HR.`],
@@ -204,7 +334,7 @@ export function buildSchedules({ dashboard, profile }) {
     });
   }
 
-  // Performa bulanan: akhir bulan jam 22:30 WIB (bulan ini & berikutnya)
+  // 3. Performa bulanan
   const now = new Date();
   for (let i = 0; i < 2; i++) {
     const y = now.getFullYear();

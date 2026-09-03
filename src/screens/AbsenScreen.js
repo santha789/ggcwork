@@ -223,6 +223,11 @@ export default function AbsenScreen({ onLoggedOut }) {
     try {
       const loc = await getCurrentLocation();
       setLocation(loc);
+      reverseGeocode(loc.coords.latitude, loc.coords.longitude)
+        .then((addr) => {
+          if (addr) setAddress(addr);
+        })
+        .catch(() => {});
     } catch (e) {
       setLocError(e.message);
     } finally {
@@ -780,18 +785,18 @@ function CameraModal({ visible, loading, cameraRef, user, now, location, distanc
               <Text style={styles.cameraInfoText}>{liveClock} WIB</Text>
             </View>
             <View style={styles.cameraInfoRow}>
-              <MaterialIcons name="my-location" size={13} color="#fff" />
-              <Text style={styles.cameraInfoText}>
+              <MaterialIcons name="place" size={14} color="#facc15" />
+              <Text style={[styles.cameraInfoText, { fontWeight: 'bold', color: '#fef08a' }]} numberOfLines={2}>
+                {address || '📍 Sedang mendeteksi alamat lokasi...'}
+              </Text>
+            </View>
+            <View style={styles.cameraInfoRow}>
+              <MaterialIcons name="my-location" size={12} color="#cbd5e1" />
+              <Text style={[styles.cameraInfoText, { fontSize: 10, color: '#94a3b8' }]}>
                 {coordText}
                 {distance !== null ? ' • ' + fmtDist(distance) + (allowAnywhere ? ' (Lokasi Bebas)' : ' dari kantor') : ''}
               </Text>
             </View>
-            {address ? (
-              <View style={styles.cameraInfoRow}>
-                <MaterialIcons name="place" size={13} color="#fff" />
-                <Text style={styles.cameraInfoText} numberOfLines={2}>{address}</Text>
-              </View>
-            ) : null}
             <View style={styles.cameraInfoRow}>
               <MaterialIcons name="business" size={13} color="#fff" />
               <Text style={styles.cameraInfoText}>{office?.name || 'Kantor Utama'}</Text>

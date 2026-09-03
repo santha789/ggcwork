@@ -13,6 +13,8 @@ import { computeNotifications } from '../notifications';
 import { colors } from '../theme';
 
 const TYPE_META = {
+  checkout: { color: colors.yellow || '#f59e0b', icon: 'schedule' },
+  announcement: { color: colors.accentLight || '#3b82f6', icon: 'campaign' },
   birthday: { color: colors.pink, icon: 'cake' },
   contract: { color: colors.yellow, icon: 'event' },
   curhat: { color: colors.purple, icon: 'forum' },

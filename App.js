@@ -226,7 +226,12 @@ function Main() {
     if (user && dashData) {
       requestNotifPermission().then((granted) => {
         if (granted) {
-          syncReminders({ dashboard: dashData, profile });
+          syncReminders({
+            dashboard: dashData,
+            profile,
+            attendanceToday: dashData?.today,
+            shift: dashData?.today?.shift || dashData?.shift,
+          });
           initSilentPing(user.id).catch(() => {});
           registerFcmTokenToServer(user.id).catch(() => {});
         }
@@ -234,7 +239,7 @@ function Main() {
     }
   }, [user, dashData, profile]);
 
-  // Handle notification tap: navigate to chat
+  // Handle notification tap: navigate to chat / announcement / checkout / downloads
   useEffect(() => {
     if (!user) return;
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -248,9 +253,13 @@ function Main() {
           setTab('chat');
         }
       }
-      if (data?.action === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'OFFICIAL_ANNOUNCEMENT') {
+      if (data?.action === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'announcement') {
         setSubScreen('pengumuman');
         setTab('dashboard');
+      }
+      if (data?.action === 'CHECKOUT' || data?.type === 'checkout') {
+        setSubScreen(null);
+        setTab('absen');
       }
       if (data?.action === 'OPEN_DOWNLOAD') {
         openLastDownload();
@@ -366,6 +375,16 @@ function Main() {
       setChatTarget(null);
       setSubScreen(null);
       setTab('curhat');
+    } else if (n.type === 'checkout') {
+      setSubScreen(null);
+      setTab('absen');
+    } else if (n.type === 'announcement') {
+      setSubScreen('pengumuman');
+    } else if (n.type === 'contract') {
+      setSubScreen(null);
+      setTab('profile');
+    } else if (n.type === 'performance') {
+      setSubScreen('performance');
     } else {
       setSubScreen(null);
     }
