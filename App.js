@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import * as Notifications from 'expo-notifications';
 import {
   BackHandler,
   StyleSheet,
@@ -36,6 +35,7 @@ import { colors } from './src/theme';
 import { computeNotifications, unreadCounts } from './src/notifications';
 import { loadLastSeen, saveLastSeen } from './src/notifStore';
 import { requestNotifPermission, syncReminders } from './src/notifService';
+import { safeNotif } from './src/notifCompat';
 import { openLastDownload } from './src/payrollPdf';
 import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
 import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
@@ -147,12 +147,12 @@ function Main() {
       setInitializing(false);
 
       // Cold-start: check if user tapped download notification while app was killed
-      Notifications.getLastNotificationResponseAsync().then((resp) => {
+      safeNotif((mod) => mod.getLastNotificationResponseAsync().then((resp) => {
         const d = resp?.notification?.request?.content?.data;
         if (d?.action === 'OPEN_DOWNLOAD') {
           openLastDownload();
         }
-      }).catch(() => {});
+      })).catch(() => {});
     })();
   }, []);
 
@@ -242,30 +242,34 @@ function Main() {
   // Handle notification tap: navigate to chat / announcement / checkout / downloads
   useEffect(() => {
     if (!user) return;
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response?.notification?.request?.content?.data;
-      if (data?.action === 'CHAT_MESSAGE' || data?.type === 'CHAT_MESSAGE') {
-        const senderId = parseInt(data.sender_id, 10);
-        if (senderId) {
-          setChatTarget(senderId);
-          setCurhatTarget(null);
-          setSubScreen(null);
-          setTab('chat');
+    let subUnsub = null;
+    safeNotif((mod) => {
+      const sub = mod.addNotificationResponseReceivedListener((response) => {
+        const data = response?.notification?.request?.content?.data;
+        if (data?.action === 'CHAT_MESSAGE' || data?.type === 'CHAT_MESSAGE') {
+          const senderId = parseInt(data.sender_id, 10);
+          if (senderId) {
+            setChatTarget(senderId);
+            setCurhatTarget(null);
+            setSubScreen(null);
+            setTab('chat');
+          }
         }
-      }
-      if (data?.action === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'announcement') {
-        setSubScreen('pengumuman');
-        setTab('dashboard');
-      }
-      if (data?.action === 'CHECKOUT' || data?.type === 'checkout') {
-        setSubScreen(null);
-        setTab('absen');
-      }
-      if (data?.action === 'OPEN_DOWNLOAD') {
-        openLastDownload();
-      }
+        if (data?.action === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'announcement') {
+          setSubScreen('pengumuman');
+          setTab('dashboard');
+        }
+        if (data?.action === 'CHECKOUT' || data?.type === 'checkout') {
+          setSubScreen(null);
+          setTab('absen');
+        }
+        if (data?.action === 'OPEN_DOWNLOAD') {
+          openLastDownload();
+        }
+      });
+      subUnsub = () => sub.remove();
     });
-    return () => sub.remove();
+    return () => { if (subUnsub) subUnsub(); };
   }, [user]);
 
   // Badge sync: update OS badge count dari unread
@@ -273,7 +277,7 @@ function Main() {
     if (!user) return;
     const uc = unreadCounts({ posts, rooms, lastSeen, myId: user.id });
     const total = uc.chat + uc.curhat;
-    Notifications.setBadgeCountAsync(total).catch(() => {});
+    safeNotif((mod) => mod.setBadgeCountAsync(total)).catch(() => {});
   }, [user, rooms, posts, lastSeen]);
 
   const markAllNotifSeen = useCallback((ids) => {

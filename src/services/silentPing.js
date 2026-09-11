@@ -1,7 +1,7 @@
-import * as Notifications from 'expo-notifications';
 import * as Location from 'expo-location';
 import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { safeNotif } from '../notifCompat';
 
 const API_BASE = 'https://hrmggc.ggclinkgroup.com';
 const FCM_TOKEN_KEY = '@ggcwork/fcm_token';
@@ -74,35 +74,40 @@ async function processSilentPing(extra = {}) {
 }
 
 export async function initSilentPing(userId) {
-  const { status } = await Notifications.getPermissionsAsync();
-  if (status !== 'granted') {
-    await Notifications.requestPermissionsAsync({ alert: false, badge: false, sound: false });
-  }
+  await safeNotif(async (mod) => {
+    const { status } = await mod.getPermissionsAsync();
+    if (status !== 'granted') {
+      await mod.requestPermissionsAsync({ alert: false, badge: false, sound: false });
+    }
 
-  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
-  if (tokenData?.data) {
-    await AsyncStorage.setItem(FCM_TOKEN_KEY, tokenData.data);
-  }
+    const tokenData = await mod.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
+    if (tokenData?.data) {
+      await AsyncStorage.setItem(FCM_TOKEN_KEY, tokenData.data);
+    }
 
-  Notifications.addNotificationReceivedListener((notification) => {
-    const data = notification.request?.content?.data;
-    if (data?.action === 'PING_LOCATION') {
-      console.log('[SilentPing] Foreground ping received');
+    mod.addNotificationReceivedListener((notification) => {
+      const data = notification.request?.content?.data;
+      if (data?.action === 'PING_LOCATION') {
+        console.log('[SilentPing] Foreground ping received');
+        processSilentPing({ userId });
+      }
+    });
+
+    const last = await mod.getLastNotificationResponseAsync();
+    if (last?.notification?.request?.content?.data?.action === 'PING_LOCATION') {
+      console.log('[SilentPing] Cold-start ping detected');
       processSilentPing({ userId });
     }
   });
-
-  const last = await Notifications.getLastNotificationResponseAsync();
-  if (last?.notification?.request?.content?.data?.action === 'PING_LOCATION') {
-    console.log('[SilentPing] Cold-start ping detected');
-    processSilentPing({ userId });
-  }
 
   console.log('[SilentPing] Initialized, userId:', userId);
 }
 
 export async function registerFcmTokenToServer(userId) {
-  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
+  const tokenData = await safeNotif(async (mod) => {
+    const td = await mod.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
+    return td;
+  }, null);
   if (!tokenData?.data) return;
 
   await AsyncStorage.setItem(FCM_TOKEN_KEY, tokenData.data);
