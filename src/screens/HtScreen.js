@@ -99,6 +99,8 @@ export default function HtScreen({ user }) {
       bumpSegments(d.segments || []);
     } catch (e) {
       // ignore; polling terus
+    } finally {
+      if (first) setLoading(false);
     }
   }, [bumpSegments]);
 
@@ -157,6 +159,7 @@ export default function HtScreen({ user }) {
     try {
       const rec = new Audio.AudioModule.AudioRecorder(Audio.RecordingPresets.HIGH_QUALITY);
       recorderRef.current = rec;
+      await rec.prepareToRecordAsync?.().catch(() => {});
       rec.record();
       setRecording(true);
       setRecordMs(0);
