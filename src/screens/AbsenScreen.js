@@ -29,23 +29,17 @@ import {
   getStoredToken,
   getStoredLoginEmail,
 } from '../attendanceApi';
+import { fmtDate, fmtTime, fmtTimeSeconds } from '../datefmt';
 
 function clockText() {
-  const d = new Date();
-  return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  return fmtTime(new Date());
 }
 
 function dateText() {
-  const d = new Date();
-  return d.toLocaleDateString('id-ID', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  return fmtDate(new Date(), { weekday: 'long' });
 }
 
-function fmtTime(t) {
+function fmtClockStr(t) {
   if (!t) return '-';
   return String(t).slice(0, 5);
 }
@@ -708,14 +702,14 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
         <View style={styles.punchTimeBox}>
           <Text style={styles.punchTimeLabel}>Masuk</Text>
           <Text style={[styles.punchTimeVal, hasIn && styles.punchTimeDone]}>
-            {fmtTime(attendance?.clock_in)}
+            {fmtClockStr(attendance?.clock_in)}
           </Text>
           <DeviceBadge dev={attendance?.clock_in_device} />
         </View>
         <View style={styles.punchTimeBox}>
           <Text style={styles.punchTimeLabel}>Pulang</Text>
           <Text style={[styles.punchTimeVal, hasOut && styles.punchTimeDone]}>
-            {fmtTime(attendance?.clock_out)}
+            {fmtClockStr(attendance?.clock_out)}
           </Text>
           <DeviceBadge dev={attendance?.clock_out_device} />
         </View>
@@ -767,7 +761,7 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
 function CameraModal({ visible, loading, cameraRef, user, now, location, distance, radius, office, address, allowAnywhere, onSnap, onClose }) {
   const name = user?.fullname || user?.firstname || '';
   const division = user?.division || user?.sub_division || user?.position || '';
-  const liveClock = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const liveClock = fmtTimeSeconds(now);
   const lat = location?.coords?.latitude;
   const lng = location?.coords?.longitude;
   const coordText = lat !== undefined && lng !== undefined
@@ -857,7 +851,7 @@ function PunchLogs({ logs }) {
               {l.punch_type === 'in' ? 'Masuk' : 'Pulang'}
             </Text>
             <Text style={styles.logTime}>
-              {l.punch_at ? new Date(l.punch_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}
+              {l.punch_at ? fmtTime(l.punch_at) : '-'}
             </Text>
           </View>
           <Text

@@ -13,17 +13,12 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { getPage } from '../api';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
+import { fmtDate } from '../datefmt';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function todayLabel() {
-  const d = new Date();
-  return d.toLocaleDateString('id-ID', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  return fmtDate(new Date(), { weekday: 'long' });
 }
 
 function contractInfo(profile) {
@@ -47,11 +42,7 @@ function contractInfo(profile) {
     color = colors.yellow;
   }
 
-  const endFmt = end.toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const endFmt = fmtDate(end, { month: 'long' });
 
   return {
     number: active?.contract_number || '',

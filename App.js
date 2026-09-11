@@ -40,6 +40,7 @@ import { openLastDownload } from './src/payrollPdf';
 import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
 import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
 import { getNotificationsSummary } from './src/chatApi';
+import ErrorBoundary from './src/ErrorBoundary';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -51,9 +52,11 @@ const TABS = [
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <Main />
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <Main />
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 

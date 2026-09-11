@@ -12,6 +12,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { getPage, postPage, deletePage } from '../api';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
+import { fmtDate } from '../datefmt';
 
 function relTime(dateString) {
   if (!dateString) return '';
@@ -21,11 +22,7 @@ function relTime(dateString) {
   if (diff < 3600) return Math.floor(diff / 60) + ' menit lalu';
   if (diff < 86400) return Math.floor(diff / 3600) + ' jam lalu';
   if (diff < 604800) return Math.floor(diff / 86400) + ' hari lalu';
-  return date.toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return fmtDate(date, { month: 'short' });
 }
 
 function roleBadge(roles) {

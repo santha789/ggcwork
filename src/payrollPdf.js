@@ -2,14 +2,9 @@ import * as Print from 'expo-print';
 import { Platform } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fmtDate, fmtRp } from './datefmt';
 
 const DL_FILE_KEY = '@ggcwork/last-download-pdf';
-
-function fmtRp(v) {
-  const n = Number(v);
-  if (isNaN(n)) return '-';
-  return 'Rp ' + n.toLocaleString('id-ID');
-}
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -234,7 +229,7 @@ export function buildSlipHtml(p) {
   <div class="footer">
     <div class="footer-note">
       * Dokumen ini dibuat secara elektronik dan sah tanpa tanda tangan basah.<br />
-      Dicetak melalui aplikasi resmi GGC Work pada ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}.
+      Dicetak melalui aplikasi resmi GGC Work pada ${fmtDate(new Date(), { month: 'long' })}.
     </div>
     <div class="sig">
       <div class="sig-title">HR &amp; Finance Management</div>

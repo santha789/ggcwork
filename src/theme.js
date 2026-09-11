@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
+import { fmtRp } from './datefmt';
 
 export const colors = {
   bg: '#0b1120',
@@ -26,7 +27,5 @@ export const APP_VERSION =
   '1.0.21';
 
 export function fmtMoney(v) {
-  const n = Number(v);
-  if (isNaN(n)) return '-';
-  return 'Rp ' + n.toLocaleString('id-ID');
+  return fmtRp(v);
 }

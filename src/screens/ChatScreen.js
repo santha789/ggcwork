@@ -24,22 +24,17 @@ import {
 } from '../chatApi';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
-
-const fmtTime = (dt) => {
-  if (!dt) return '';
-  const d = new Date(dt);
-  return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-};
+import { fmtDate, fmtTime } from '../datefmt';
 
 const fmtDateSeparator = (dt) => {
   if (!dt) return '';
   const d = new Date(dt);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return 'Hari Ini';
+  if (!isNaN(d.getTime()) && d.toDateString() === now.toDateString()) return 'Hari Ini';
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'Kemarin';
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (!isNaN(d.getTime()) && d.toDateString() === yesterday.toDateString()) return 'Kemarin';
+  return fmtDate(dt, { month: 'short' });
 };
 
 const initialsOf = (name) => {
@@ -496,17 +491,19 @@ export default function ChatScreen({
         )}
 
         {/* Chat Input Bar with dynamic keyboard spacing */}
-        <View
-          style={[
-            styles.inputContainer,
-            {
-              paddingBottom: keyboardHeight > 0
-                ? 10
-                : Math.max(insets.bottom, 12),
-              marginBottom: Platform.OS === 'ios' && keyboardHeight > 0 ? keyboardHeight : 0,
-            },
-          ]}
-        >
+<View
+            style={[
+              styles.inputContainer,
+              {
+                paddingBottom: keyboardHeight > 0
+                  ? 10
+                  : Math.max(insets.bottom, 12),
+                marginBottom: keyboardHeight > 0
+                  ? keyboardHeight + (Platform.OS === 'android' ? insets.bottom : 0)
+                  : 0,
+              },
+            ]}
+          >
           <TextInput
             style={styles.textInput}
             value={input}

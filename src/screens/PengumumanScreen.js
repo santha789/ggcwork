@@ -10,6 +10,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { getPage } from '../api';
 import { colors } from '../theme';
+import { fmtDate } from '../datefmt';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -22,7 +23,7 @@ function timeAgo(dateStr) {
   if (diff < 3600000) return Math.floor(diff / 60000) + 'm lalu';
   if (diff < 86400000) return Math.floor(diff / 3600000) + 'j lalu';
   if (diff < 604800000) return Math.floor(diff / 86400000) + 'h lalu';
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  return fmtDate(d, { month: 'short' });
 }
 
 function CategoryBadge({ cat }) {

@@ -1,11 +1,27 @@
 // expo-notifications: remote push dihapus dari Expo Go sejak SDK 53.
-// Import statis akan crash saat module load (internal addPushTokenListener throws).
-// Helper ini memuat modul secara dinamis + terlindungi, supaya app tetap
-// berjalan di Expo Go (fitur notif push nonaktif), dan penuh di dev/prod build.
+// Import (statis ATAU dinamis) tetap akan mengeksekusi side-effect top-level
+// modul (DevicePushTokenAutoRegistration) yang throw di Expo Go, sehingga
+// memuatnya saja sudah cukup untuk crash. Karena itu helper ini TIDAK PERNAH
+// mengeksekusi import() di Expo Go, dan hanya memuat modul pada dev/prod build.
+
+import Constants from 'expo-constants';
 
 let _notifPromise = null;
 
+// Expo Go (bukan development build) → semua fitur expo-notifications off.
+function isExpoGo() {
+  try {
+    return Constants.appOwnership === 'expo';
+  } catch (e) {
+    return false;
+  }
+}
+
 export async function getNotif() {
+  if (isExpoGo()) {
+    console.log('[notif] Expo Go terdeteksi; fitur notifikasi dimatikan.');
+    return null;
+  }
   if (_notifPromise) return _notifPromise;
   _notifPromise = (async () => {
     try {

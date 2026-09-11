@@ -13,6 +13,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
 import { downloadPayrollPdf, printPayrollSlip } from '../payrollPdf';
+import { fmtDate, fmtRp } from '../datefmt';
 
 function monthName(m) {
   const names = [
@@ -20,12 +21,6 @@ function monthName(m) {
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
   ];
   return names[(m || 1) - 1] || m;
-}
-
-function fmtRp(v) {
-  const n = Number(v);
-  if (isNaN(n)) return '-';
-  return 'Rp ' + n.toLocaleString('id-ID');
 }
 
 function statusInfo(status) {
@@ -200,7 +195,7 @@ function PayrollCard({ pay }) {
             <Text style={[styles.statusText, { color: st.color }]}>{st.label}</Text>
             {pay.payment_date ? (
               <Text style={styles.payDateText}>
-                • {new Date(pay.payment_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                • {fmtDate(pay.payment_date, { month: 'short' })}
               </Text>
             ) : null}
           </View>
