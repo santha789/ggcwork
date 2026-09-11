@@ -49,6 +49,7 @@ export default function HtScreen({ user }) {
   const recordStartRef = useRef(null);
   const recordTimerRef = useRef(null);
   const recorderRef = useRef(null);
+  const [autoPlay, setAutoPlay] = useState(true);
 
   // Target picker
   const [targets, setTargets] = useState({ all: true, sub_division_ids: [], employee_types: [], user_ids: [] });
@@ -61,6 +62,8 @@ export default function HtScreen({ user }) {
   const [playingId, setPlayingId] = useState(null);
   const playerRef = useRef(null);
   const playingIdRef = useRef(null);
+  const autoPlayRef = useRef(true);
+  autoPlayRef.current = autoPlay;
   const setPlaying = (id) => {
     playingIdRef.current = id;
     setPlayingId(id);
@@ -68,6 +71,7 @@ export default function HtScreen({ user }) {
 
   const afterRef = useRef(0);
   const pollRef = useRef(null);
+  const pendingAutoPlayRef = useRef(null);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -86,6 +90,14 @@ export default function HtScreen({ user }) {
       if (fresh.length) {
         const maxId = Math.max(...fresh.map((s) => s.id));
         afterRef.current = Math.max(afterRef.current, maxId);
+        // Auto-play: siaran baru dari orang lain langsung dibunyikan bila autoPlay aktif.
+        if (autoPlayRef.current) {
+          const news = [...fresh].sort((a, b) => b.id - a.id);
+          const target = news.find((s) => !s.is_mine);
+          if (target) {
+            pendingAutoPlayRef.current = target.id;
+          }
+        }
         return [...fresh, ...prev];
       }
       return prev;
@@ -119,6 +131,18 @@ export default function HtScreen({ user }) {
       }
     };
   }, [syncStream]);
+
+  // Jalankan auto-play untuk siaran baru (defer sampai playSegment tersedia).
+  useEffect(() => {
+    if (!pendingAutoPlayRef.current) return;
+    const id = pendingAutoPlayRef.current;
+    pendingAutoPlayRef.current = null;
+    if (autoPlayRef.current && enabled) {
+      const seg = segments.find((s) => s.id === id);
+      if (seg && !seg.is_mine) playSegment(seg);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segments, enabled]);
 
   // Audio mode: biarkan audio tetap aktif saat app dibackground.
   useEffect(() => {
@@ -305,6 +329,23 @@ export default function HtScreen({ user }) {
             () => setPickerOpen(!pickerOpen),
             pickerOpen ? styles.chipActive : null
           )}
+          <TouchableOpacity
+            style={[
+              styles.autoPlayBtn,
+              { borderColor: autoPlay ? colors.accent + '66' : colors.border },
+            ]}
+            onPress={() => setAutoPlay(!autoPlay)}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons
+              name={autoPlay ? 'play-circle-filled' : 'play-circle-outline'}
+              size={18}
+              color={autoPlay ? colors.accent : colors.muted}
+            />
+            <Text style={[styles.autoPlayText, { color: autoPlay ? colors.accent : colors.muted }]}>
+              Auto
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {pickerOpen ? (
@@ -575,6 +616,17 @@ const styles = StyleSheet.create({
   },
   targetChipText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
   chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  autoPlayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+  },
+  autoPlayText: { fontSize: 11, fontWeight: '700' },
   picker: {
     marginTop: 12,
     padding: 12,
