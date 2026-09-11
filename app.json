@@ -77,6 +77,12 @@
             "enableMinifyInReleaseBuilds": true
           }
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Izinkan GGC Work mengakses mikrofon untuk siaran HT realtime."
+        }
       ]
     ],
     "extra": {

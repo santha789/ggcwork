@@ -23,6 +23,7 @@ import PayrollScreen from './src/screens/PayrollScreen';
 import LeaveScreen from './src/screens/LeaveScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import CurhatScreen from './src/screens/CurhatScreen';
+import HtScreen from './src/screens/HtScreen';
 import PerformanceScreen from './src/screens/PerformanceScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
@@ -44,6 +45,7 @@ import ErrorBoundary from './src/ErrorBoundary';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { key: 'ht', label: 'HT', icon: 'radio' },
   { key: 'chat', label: 'Chat', icon: 'forum' },
   { key: 'absen', label: 'Absen', icon: 'fingerprint', main: true },
   { key: 'curhat', label: 'Curhat', icon: 'groups' },
@@ -264,6 +266,12 @@ function Main() {
           setChatTarget(null);
           setSubScreen(null);
           setTab('curhat');
+        }
+        if (data?.action === 'HT_NEW' || data?.type === 'ht') {
+          setCurhatTarget(null);
+          setChatTarget(null);
+          setSubScreen(null);
+          setTab('ht');
         }
         if (data?.action === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'announcement') {
           setSubScreen('pengumuman');
@@ -514,6 +522,8 @@ function Main() {
             onMarkRead={markCurhatRead}
           />
         );
+      case 'ht':
+        return <HtScreen user={user} />;
       case 'profile':
         return (
           <ProfileScreen
