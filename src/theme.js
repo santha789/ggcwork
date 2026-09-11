@@ -21,9 +21,9 @@ export const colors = {
 };
 
 export const APP_VERSION =
-  Application.nativeApplicationVersion ||
   Constants.expoConfig?.version ||
   Constants.manifest2?.extra?.expoClient?.version ||
+  Application.nativeApplicationVersion ||
   '1.0.21';
 
 export function fmtMoney(v) {

@@ -173,9 +173,13 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
   }
 
   if (error) return <Error message={error} onRetry={load} />;
-  if (!dash || !attData) return <Loading />;
+  // Render segera begitu dash tersedia (diseed dari login/cache); stats
+  // attendance ditampilkan default dulu sampai attData selesai dimuat.
+  if (!dash) return <Loading />;
 
-  const s = computeMyStats(attData);
+  const s = attData
+    ? computeMyStats(attData)
+    : { month: 0, year: 0, scheduled: 0, hadir: 0, telat: 0, alpha: 0, cuti: 0, pct: 0 };
   const pendingLeaves = dash.pendingLeaves || [];
   const kontrak = contractInfo(profile);
   const unreadAnnouncements = (announcements || []).filter((i) => !i.is_read);

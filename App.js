@@ -258,6 +258,13 @@ function Main() {
             setTab('chat');
           }
         }
+        if (data?.action === 'CURHAT_NEW' || data?.type === 'curhat') {
+          const postId = parseInt(data.post_id, 10) || null;
+          setCurhatTarget(postId);
+          setChatTarget(null);
+          setSubScreen(null);
+          setTab('curhat');
+        }
         if (data?.action === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'announcement') {
           setSubScreen('pengumuman');
           setTab('dashboard');
@@ -303,7 +310,14 @@ function Main() {
   }
 
   if (!user) {
-    return <LoginScreen onLogin={(props) => setUser(props.auth?.user || {})} />;
+    return (
+      <LoginScreen
+        onLogin={(props) => {
+          setUser(props.auth?.user || {});
+          setDashData(props);
+        }}
+      />
+    );
   }
 
   const hour = new Date().getHours();
