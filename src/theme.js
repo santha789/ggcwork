@@ -1,3 +1,6 @@
+import Constants from 'expo-constants';
+import * as Application from 'expo-application';
+
 export const colors = {
   bg: '#0b1120',
   card: '#151d31',
@@ -16,7 +19,11 @@ export const colors = {
   pink: '#f472b6',
 };
 
-export const APP_VERSION = '1.0.1';
+export const APP_VERSION =
+  Application.nativeApplicationVersion ||
+  Constants.expoConfig?.version ||
+  Constants.manifest2?.extra?.expoClient?.version ||
+  '1.0.21';
 
 export function fmtMoney(v) {
   const n = Number(v);
