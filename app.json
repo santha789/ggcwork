@@ -6,12 +6,6 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0b1120"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ggclink.ggcwork",
@@ -64,6 +58,14 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0b1120"
+        }
+      ],
       "./plugins/removeUnusedPermissions",
       [
         "expo-build-properties",
