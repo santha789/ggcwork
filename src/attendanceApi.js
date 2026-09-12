@@ -4,7 +4,7 @@ import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import * as Location from 'expo-location';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 

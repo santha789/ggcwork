@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Audio from 'expo-audio';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { htOptions, htSetEnabled, htWsUrl } from '../htApi';
 import { getStoredToken } from '../attendanceApi';
 import { Loading, Error } from '../components';
