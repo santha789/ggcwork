@@ -408,7 +408,7 @@ export default function HtScreen({ user, onBack }) {
 
   // ---------- Target picker UI ----------
   function targetCountLabel() {
-    const n = targets.sub_division_ids.length + targets.employee_types.length + targets.user_ids.length;
+    const n = (targets.sub_division_ids || []).length + (targets.employee_types || []).length + (targets.user_ids || []).length;
     return n + ' target';
   }
 
@@ -417,7 +417,7 @@ export default function HtScreen({ user, onBack }) {
       const list = t.sub_division_ids.includes(id)
         ? t.sub_division_ids.filter((x) => x !== id)
         : [...t.sub_division_ids, id];
-      return { all: false, sub_division_ids: list };
+      return { ...t, all: false, sub_division_ids: list };
     });
   }
 
@@ -426,14 +426,14 @@ export default function HtScreen({ user, onBack }) {
       const list = t.employee_types.includes(name)
         ? t.employee_types.filter((x) => x !== name)
         : [...t.employee_types, name];
-      return { all: false, employee_types: list };
+      return { ...t, all: false, employee_types: list };
     });
   }
 
   function toggleUser(id) {
     setTargets((t) => {
       const list = t.user_ids.includes(id) ? t.user_ids.filter((x) => x !== id) : [...t.user_ids, id];
-      return { all: false, user_ids: list };
+      return { ...t, all: false, user_ids: list };
     });
     setUserSearch('');
     setSearchResults([]);
