@@ -2,6 +2,10 @@ import { getStoredToken } from './attendanceApi';
 
 const BASE = 'https://hrmggc.ggclinkgroup.com';
 
+export function htWsUrl() {
+  return BASE.replace(/^https/, 'wss') + '/ws/ht';
+}
+
 async function withToken() {
   let token = null;
   try {
