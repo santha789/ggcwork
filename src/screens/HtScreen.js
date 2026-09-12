@@ -37,7 +37,6 @@ export default function HtScreen({ user, onBack }) {
   // PTT
   const [recording, setRecording] = useState(false);
   const [recordMs, setRecordMs] = useState(0);
-  const recReadyRef = useRef(false);
   const talkingRef = useRef(false);
   const talkSeqRef = useRef(0);
   const recordTimerRef = useRef(null);
@@ -318,24 +317,38 @@ const chunkBusyRef = useRef(false);
     if (!sendWs({ type: 'start_talk' })) {
       // fallback: tetap lanjut; server akan abort chunk kalau tak joined
     }
-    startChunkLoop();
     recordTimerRef.current = setInterval(() => {
       const ms = Date.now() - recStartRef.current;
       setRecordMs(ms);
       if (ms >= MAX_TALK_MS) stopRecord();
     }, 100);
+    await startChunkLoop();
   }
 
   async function startChunk() {
     if (chunkRecorderRef.current) return;
+    let rec = null;
     try {
-      const rec = new Audio.AudioModule.AudioRecorder(Audio.RecordingPresets.HIGH_QUALITY);
+      rec = new Audio.AudioModule.AudioRecorder(Audio.RecordingPresets.HIGH_QUALITY);
       chunkRecorderRef.current = rec;
-      await rec.prepareToRecordAsync?.().catch(() => {});
+      try {
+        await rec.prepareToRecordAsync?.();
+      } catch (e) {
+        if (chunkRecorderRef.current === rec) chunkRecorderRef.current = null;
+        rec.release?.();
+        return;
+      }
+      // Preparasi async bisa selesai SETELAH kita di-stop/dilepas (press cepat
+      // atau unmount). Jangan sentuh recorder yang tak lagi jadi milik kita —
+      // memanggil record()/release() pada object yang sudah released akan
+      // melempar 'Cannot use shared object that was already released'.
+      if (chunkRecorderRef.current !== rec || !talkingRef.current) return;
       rec.record();
-      recReadyRef.current = true;
     } catch (e) {
-      recReadyRef.current = false;
+      if (chunkRecorderRef.current === rec) chunkRecorderRef.current = null;
+      try {
+        rec?.release?.();
+      } catch (e2) {}
     }
   }
 
@@ -352,7 +365,9 @@ const chunkBusyRef = useRef(false);
     try {
       await rec.stop().catch(() => {});
       uri = rec.uri;
-      rec.release?.();
+      try {
+        rec.release?.();
+      } catch (e) {}
       chunkRecorderRef.current = null;
     } catch (e) {
       chunkRecorderRef.current = null;
@@ -376,9 +391,10 @@ const chunkBusyRef = useRef(false);
     }
   }
 
-  function startChunkLoop() {
+  async function startChunkLoop() {
     if (!talkingRef.current) return;
-    startChunk();
+    await startChunk();
+    if (!talkingRef.current) return;
     setTimeout(() => {
       cutChunk().then((ok) => {
         if (!ok || !talkingRef.current) return;
@@ -401,9 +417,11 @@ const chunkBusyRef = useRef(false);
       await waitChunkIdle();
       const rec = chunkRecorderRef.current;
       if (rec) {
-        rec.stop?.().catch(() => {});
-        rec.release?.();
         chunkRecorderRef.current = null;
+        try {
+          rec.stop?.().catch(() => {});
+          rec.release?.();
+        } catch (e) {}
       }
       sendWs({ type: 'stop_talk' });
       return;
@@ -423,8 +441,10 @@ const chunkBusyRef = useRef(false);
     if (!chunkBusyRef.current && chunkRecorderRef.current) {
       const rec = chunkRecorderRef.current;
       chunkRecorderRef.current = null;
-      rec.stop?.().catch(() => {});
-      rec.release?.();
+      try {
+        rec.stop?.().catch(() => {});
+        rec.release?.();
+      } catch (e) {}
     }
     sendWs({ type: 'stop_talk' });
   }
