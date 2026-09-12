@@ -45,7 +45,6 @@ import ErrorBoundary from './src/ErrorBoundary';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { key: 'ht', label: 'HT', icon: 'radio' },
   { key: 'chat', label: 'Chat', icon: 'forum' },
   { key: 'absen', label: 'Absen', icon: 'fingerprint', main: true },
   { key: 'curhat', label: 'Curhat', icon: 'groups' },
@@ -270,8 +269,8 @@ function Main() {
         if (data?.action === 'HT_NEW' || data?.type === 'ht') {
           setCurhatTarget(null);
           setChatTarget(null);
-          setSubScreen(null);
-          setTab('ht');
+          setTab('dashboard');
+          setSubScreen('ht');
         }
         if (data?.action === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'OFFICIAL_ANNOUNCEMENT' || data?.type === 'announcement') {
           setSubScreen('pengumuman');
@@ -499,6 +498,9 @@ function Main() {
     if (subScreen === 'pengumuman') {
       return <PengumumanScreen onBack={() => setSubScreen(null)} />;
     }
+    if (subScreen === 'ht') {
+      return <HtScreen user={user} onBack={() => setSubScreen(null)} />;
+    }
     switch (tab) {
       case 'absen':
         return <AbsenScreen onLoggedOut={handleLogout} />;
@@ -548,6 +550,7 @@ function Main() {
             onOpenTagihan={() => setSubScreen('tagihan')}
             onOpenKPI={() => setSubScreen('kpi')}
             onOpenPengumuman={() => setSubScreen('pengumuman')}
+            onOpenHT={() => setSubScreen('ht')}
           />
         );
     }

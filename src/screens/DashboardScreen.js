@@ -122,7 +122,7 @@ function QuickCircle({ label, value, icon, color, onPress }) {
   );
 }
 
-export default function DashboardScreen({ user, initial, onNavigate, onOpenAttendance, onOpenShift, onOpenPayroll, onOpenLeave, onOpenPerformance, onOpenAsset, onOpenPoin, onOpenTagihan, onOpenKPI, onOpenPengumuman }) {
+export default function DashboardScreen({ user, initial, onNavigate, onOpenAttendance, onOpenShift, onOpenPayroll, onOpenLeave, onOpenPerformance, onOpenAsset, onOpenPoin, onOpenTagihan, onOpenKPI, onOpenPengumuman, onOpenHT }) {
   const [dash, setDash] = useState(initial || null);
   const [attData, setAttData] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -356,6 +356,12 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
             />
           </View>
           <View style={[styles.quickPage, { width: pageW || '100%' }]}>
+            <QuickCircle
+              label="HT"
+              icon="radio"
+              color={colors.accentLight}
+              onPress={onOpenHT}
+            />
             <QuickCircle
               label="Pengumuman"
               value={unreadAnnouncementsCount}

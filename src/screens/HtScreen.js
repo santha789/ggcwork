@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -25,7 +27,7 @@ function nowLabel() {
   return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-export default function HtScreen({ user }) {
+export default function HtScreen({ user, onBack }) {
   const [options, setOptions] = useState(null);
   const [enabled, setEnabled] = useState(true);
   const [conn, setConn] = useState('off'); // off|connecting|open
@@ -52,7 +54,7 @@ export default function HtScreen({ user }) {
   // Target picker
   const [targets, setTargets] = useState({ all: true, sub_division_ids: [], employee_types: [], user_ids: [] });
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [subFilter, setSubFilter] = useState(null);
+  const [pickerTab, setPickerTab] = useState('semua');
   const [userSearch, setUserSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
 
@@ -405,29 +407,66 @@ export default function HtScreen({ user }) {
   }
 
   // ---------- Target picker UI ----------
-  function renderTargetChip(label, icon, onPress, extraStyle) {
-    return (
-      <TouchableOpacity style={[styles.targetChip, extraStyle]} onPress={onPress} activeOpacity={0.8}>
-        <MaterialIcons name={icon} size={16} color={extraStyle ? '#fff' : colors.muted} />
-        <Text style={[styles.targetChipText, extraStyle && { color: '#fff' }]} numberOfLines={1}>
-          {label}
-        </Text>
-      </TouchableOpacity>
-    );
-  }
-
   function targetCountLabel() {
     const n = targets.sub_division_ids.length + targets.employee_types.length + targets.user_ids.length;
     return n + ' target';
+  }
+
+  function toggleSub(id) {
+    setTargets((t) => {
+      const list = t.sub_division_ids.includes(id)
+        ? t.sub_division_ids.filter((x) => x !== id)
+        : [...t.sub_division_ids, id];
+      return { all: false, sub_division_ids: list };
+    });
+  }
+
+  function toggleType(name) {
+    setTargets((t) => {
+      const list = t.employee_types.includes(name)
+        ? t.employee_types.filter((x) => x !== name)
+        : [...t.employee_types, name];
+      return { all: false, employee_types: list };
+    });
+  }
+
+  function toggleUser(id) {
+    setTargets((t) => {
+      const list = t.user_ids.includes(id) ? t.user_ids.filter((x) => x !== id) : [...t.user_ids, id];
+      return { all: false, user_ids: list };
+    });
+    setUserSearch('');
+    setSearchResults([]);
+  }
+
+  function searchUsers(q) {
+    if (!q.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    const query = q.trim().toLowerCase();
+    setSearchResults((options?.users || []).filter((u) => (u.fullname || '').toLowerCase().includes(query)).slice(0, 8));
+  }
+
+  function applyTargets() {
+    setPickerOpen(false);
+    setTimeout(() => pushConfig(), 120);
   }
 
   function renderHeader() {
     return (
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
-          <View>
-            <Text style={styles.title}>Siaran HT</Text>
-            <Text style={styles.subtitle}>Radio karyawan realtime • tekan-tahan untuk bicara</Text>
+          <View style={styles.headerTitleCol}>
+            {onBack ? (
+              <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
+                <MaterialIcons name="arrow-back" size={20} color={colors.text} />
+              </TouchableOpacity>
+            ) : null}
+            <View>
+              <Text style={styles.title}>Siaran HT</Text>
+              <Text style={styles.subtitle}>Radio karyawan realtime • tekan-tahan untuk bicara</Text>
+            </View>
           </View>
           <View style={styles.headerActions}>
             <View style={[styles.connPill, conn === 'open' ? styles.connOn : null]}>
@@ -447,12 +486,17 @@ export default function HtScreen({ user }) {
         </View>
 
         <View style={styles.targetRow}>
-          {renderTargetChip(
-            targets.all ? 'Semua Karyawan' : targetCountLabel(),
-            targets.all ? 'public' : 'filter-list',
-            () => setPickerOpen(!pickerOpen),
-            pickerOpen ? styles.chipActive : null
-          )}
+          <TouchableOpacity
+            style={[styles.targetChip, styles.targetChipMain]}
+            onPress={() => setPickerOpen(true)}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name={targets.all ? 'public' : 'filter-list'} size={16} color={colors.accent} />
+            <Text style={styles.targetChipMainText} numberOfLines={1}>
+              {targets.all ? 'Semua Karyawan' : targetCountLabel()}
+            </Text>
+            <MaterialIcons name="keyboard-arrow-down" size={18} color={colors.accent} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.autoPlayBtn, { borderColor: autoPlay ? colors.accent + '66' : colors.border }]}
             onPress={() => setAutoPlay(!autoPlay)}
@@ -471,115 +515,6 @@ export default function HtScreen({ user }) {
             </Text>
           </View>
         )}
-
-        {pickerOpen ? (
-          <View style={styles.picker}>
-            <Text style={styles.pickerLabel}>Audience (untuk siaran-mu)</Text>
-            {renderTargetChip(
-              '1. Semua',
-              'check-circle',
-              () => setTargets({ all: true, sub_division_ids: [], employee_types: [], user_ids: [] }),
-              targets.all ? styles.chipActive : null
-            )}
-            <Text style={styles.pickerLabel}>2. Subdivisi (opsional)</Text>
-            <View style={styles.chipWrap}>
-              {(options?.sub_divisions || []).map((sd) => {
-                const sel = targets.sub_division_ids.includes(sd.id);
-                return renderTargetChip(
-                  sd.name,
-                  sel ? 'check-box' : 'check-box-outline-blank',
-                  () => {
-                    setTargets((t) => {
-                      const list = t.sub_division_ids.includes(sd.id)
-                        ? t.sub_division_ids.filter((x) => x !== sd.id)
-                        : [...t.sub_division_ids, sd.id];
-                      return { ...t, all: false, sub_division_ids: list };
-                    });
-                  },
-                  sel ? styles.chipActive : null
-                );
-              })}
-            </View>
-            <Text style={styles.pickerLabel}>3. Jenis Karyawan (opsional)</Text>
-            <View style={styles.chipWrap}>
-              {(options?.employee_types || []).map((et) => {
-                const sel = targets.employee_types.includes(et);
-                return renderTargetChip(
-                  et,
-                  sel ? 'check-box' : 'check-box-outline-blank',
-                  () => {
-                    setTargets((t) => {
-                      const list = t.employee_types.includes(et)
-                        ? t.employee_types.filter((x) => x !== et)
-                        : [...t.employee_types, et];
-                      return { ...t, all: false, employee_types: list };
-                    });
-                  },
-                  sel ? styles.chipActive : null
-                );
-              })}
-            </View>
-            <Text style={styles.pickerLabel}>4. User Tertentu (opsional)</Text>
-            <View style={styles.searchRow}>
-              <MaterialIcons name="search" size={18} color={colors.muted} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Ketik nama untuk menandai…"
-                placeholderTextColor={colors.muted}
-                value={userSearch}
-                onChangeText={(t) => {
-                  setUserSearch(t);
-                  if (!t.trim()) {
-                    setSearchResults([]);
-                    return;
-                  }
-                  const q = t.trim().toLowerCase();
-                  const res = (options?.users || []).filter((u) => (u.fullname || '').toLowerCase().includes(q));
-                  setSearchResults(res.slice(0, 8));
-                }}
-              />
-            </View>
-            {searchResults.length > 0 && (
-              <View style={styles.searchResults}>
-                {searchResults.map((u) => {
-                  const sel = targets.user_ids.includes(u.id);
-                  return (
-                    <TouchableOpacity
-                      key={u.id}
-                      style={styles.searchResultRow}
-                      onPress={() => {
-                        setTargets((t) => {
-                          const list = t.user_ids.includes(u.id)
-                            ? t.user_ids.filter((x) => x !== u.id)
-                            : [...t.user_ids, u.id];
-                          return { ...t, all: false, user_ids: list };
-                        });
-                        setUserSearch('');
-                        setSearchResults([]);
-                      }}
-                    >
-                      <MaterialIcons name={sel ? 'check-circle' : 'add-circle-outline'} size={18} color={sel ? colors.accent : colors.muted} />
-                      <Text style={[styles.searchResultName, sel && { color: colors.accent }]}>{u.fullname}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-            {targets.user_ids.length > 0 && (
-              <View style={styles.chipWrap}>
-                {targets.user_ids.map((uid) => {
-                  const u = (options?.users || []).find((x) => x.id === uid);
-                  return renderTargetChip(
-                    u?.fullname || '#' + uid,
-                    'person',
-                    () => setTargets((t) => ({ ...t, user_ids: t.user_ids.filter((x) => x !== uid), all: false })),
-                    styles.chipActive
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        ) : null}
       </View>
     );
   }
@@ -663,6 +598,154 @@ export default function HtScreen({ user }) {
         contentContainerStyle={incoming.length ? { paddingBottom: 260 } : { flexGrow: 1, paddingBottom: 260 }}
       />
       {renderPTT()}
+
+      {pickerOpen ? (
+        <Modal transparent visible animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+          <View style={styles.modalRoot}>
+            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setPickerOpen(false)} activeOpacity={1} />
+            <View style={styles.modalSheet}>
+              <View style={styles.modalHeader}>
+                <View style={styles.modalTitleCol}>
+                  <Text style={styles.modalTitle}>Audience Siaran</Text>
+                  <Text style={styles.modalSub}>
+                    {targets.all ? 'Seluruh karyawan' : 'Dikirim ke ' + targetCountLabel()}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.modalClose} onPress={() => setPickerOpen(false)} activeOpacity={0.7}>
+                  <MaterialIcons name="close" size={20} color={colors.muted} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.segRow}>
+                {[
+                  { k: 'semua', label: 'Semua' },
+                  { k: 'subdivisi', label: 'Subdivisi', n: targets.sub_division_ids.length },
+                  { k: 'jenis', label: 'Jenis', n: targets.employee_types.length },
+                  { k: 'orang', label: 'Orang', n: targets.user_ids.length },
+                ].map((s) => (
+                  <TouchableOpacity
+                    key={s.k}
+                    style={[styles.segItem, pickerTab === s.k && styles.segItemActive]}
+                    onPress={() => setPickerTab(s.k)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.segText, pickerTab === s.k && styles.segTextActive]}>{s.label}</Text>
+                    {s.n > 0 ? (
+                      <View style={styles.segCount}>
+                        <Text style={styles.segCountText}>{s.n}</Text>
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+                {pickerTab === 'semua' ? (
+                  <TouchableOpacity
+                    style={styles.radioRow}
+                    onPress={() => setTargets({ all: true, sub_division_ids: [], employee_types: [], user_ids: [] })}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons
+                      name={targets.all ? 'radio-button-checked' : 'radio-button-unchecked'}
+                      size={22}
+                      color={targets.all ? colors.accent : colors.muted}
+                    />
+                    <View style={styles.radioBody}>
+                      <Text style={[styles.radioTitle, targets.all && { color: colors.accent }]}>Semua Karyawan</Text>
+                      <Text style={styles.radioSub}>Siaran diterima seluruh karyawan aktif</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
+
+                {pickerTab === 'subdivisi' ? (
+                  <View>
+                    <Text style={styles.pickerLabel}>Pilih subdivisi tujuan</Text>
+                    {(options?.sub_divisions || []).map((sd) => {
+                      const sel = targets.sub_division_ids.includes(sd.id);
+                      return (
+                        <TouchableOpacity key={sd.id} style={styles.checkRow} onPress={() => toggleSub(sd.id)} activeOpacity={0.7}>
+                          <MaterialIcons name={sel ? 'check-box' : 'check-box-outline-blank'} size={22} color={sel ? colors.accent : colors.muted} />
+                          <Text style={[styles.checkText, sel && styles.checkTextActive]}>{sd.name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                {pickerTab === 'jenis' ? (
+                  <View>
+                    <Text style={styles.pickerLabel}>Pilih jenis karyawan</Text>
+                    {(options?.employee_types || []).map((et) => {
+                      const sel = targets.employee_types.includes(et);
+                      return (
+                        <TouchableOpacity key={et} style={styles.checkRow} onPress={() => toggleType(et)} activeOpacity={0.7}>
+                          <MaterialIcons name={sel ? 'check-box' : 'check-box-outline-blank'} size={22} color={sel ? colors.accent : colors.muted} />
+                          <Text style={[styles.checkText, sel && styles.checkTextActive]}>{et}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                {pickerTab === 'orang' ? (
+                  <View>
+                    <Text style={styles.pickerLabel}>Cari karyawan</Text>
+                    <View style={styles.searchRow}>
+                      <MaterialIcons name="search" size={18} color={colors.muted} />
+                      <TextInput
+                        style={styles.searchInput}
+                        placeholder="Ketik nama…"
+                        placeholderTextColor={colors.muted}
+                        value={userSearch}
+                        onChangeText={(t) => {
+                          setUserSearch(t);
+                          searchUsers(t);
+                        }}
+                      />
+                    </View>
+                    {targets.user_ids.length > 0 && (
+                      <View style={styles.modalSelectedWrap}>
+                        {targets.user_ids.map((uid) => {
+                          const u = (options?.users || []).find((x) => x.id === uid);
+                          return (
+                            <TouchableOpacity key={uid} style={styles.modalSelectedChip} onPress={() => toggleUser(uid)} activeOpacity={0.8}>
+                              <Text style={styles.modalSelectedText} numberOfLines={1}>
+                                {u?.fullname || '#' + uid}
+                              </Text>
+                              <MaterialIcons name="close" size={14} color={colors.accent} />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                    {searchResults.length > 0 && (
+                      <View style={styles.searchResults}>
+                        {searchResults.map((u) => {
+                          const sel = targets.user_ids.includes(u.id);
+                          return (
+                            <TouchableOpacity key={u.id} style={styles.searchResultRow} onPress={() => toggleUser(u.id)} activeOpacity={0.7}>
+                              <MaterialIcons name={sel ? 'check-circle' : 'add-circle-outline'} size={18} color={sel ? colors.accent : colors.muted} />
+                              <Text style={[styles.searchResultName, sel && { color: colors.accent }]}>{u.fullname}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                ) : null}
+              </ScrollView>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity style={styles.applyBtn} onPress={applyTargets} activeOpacity={0.85}>
+                  <MaterialIcons name="check" size={18} color="#fff" />
+                  <Text style={styles.applyText}>Terapkan</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -678,6 +761,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
   },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerTitleCol: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { color: colors.text, fontWeight: 'bold', fontSize: 18 },
   subtitle: { color: colors.muted, fontSize: 12, marginTop: 2 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -715,7 +807,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     maxWidth: '100%',
   },
-  targetChipText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  targetChipMain: { backgroundColor: colors.accentLight + '14', borderColor: colors.accent + '44' },
+  targetChipMainText: { color: colors.text, fontSize: 12, fontWeight: '700', maxWidth: 180 },
   chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   autoPlayBtn: {
     flexDirection: 'row',
@@ -751,12 +844,111 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 11,
     fontWeight: '700',
-    marginTop: 10,
-    marginBottom: 6,
+    marginTop: 4,
+    marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  modalRoot: { flex: 1, justifyContent: 'flex-end' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.55)' },
+  modalSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    maxHeight: '78%',
+    paddingBottom: 18,
+  },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  modalTitleCol: { flex: 1 },
+  modalTitle: { color: colors.text, fontWeight: 'bold', fontSize: 17 },
+  modalSub: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  modalClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.bg,
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 12,
+  },
+  segItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  segItemActive: { backgroundColor: colors.card },
+  segText: { color: colors.muted, fontSize: 12, fontWeight: '700' },
+  segTextActive: { color: colors.accent },
+  segCount: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segCountText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  modalBody: { maxHeight: 360 },
+  radioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.bg,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+  },
+  radioBody: { flex: 1 },
+  radioTitle: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  radioSub: { color: colors.muted, fontSize: 12, marginTop: 3 },
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  checkText: { color: colors.text, fontSize: 14, flex: 1 },
+  checkTextActive: { color: colors.accent, fontWeight: '700' },
+  modalSelectedWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  modalSelectedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.accentLight + '1e',
+    borderWidth: 1,
+    borderColor: colors.accent + '44',
+    maxWidth: '100%',
+  },
+  modalSelectedText: { color: colors.accent, fontSize: 12, fontWeight: '600', maxWidth: 150 },
+  modalFooter: { marginTop: 14 },
+  applyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    paddingVertical: 13,
+  },
+  applyText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
