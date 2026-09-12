@@ -4,6 +4,8 @@ import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 const BASE = 'https://hrmggc.ggclinkgroup.com';
@@ -96,8 +98,10 @@ function jsonRequest(method, path, body, { token, idempotencyKey } = {}) {
   });
 }
 
-// Multipart request utk punch berfoto. Memakai RN FormData dengan File-as-Blob
-// (expo-file-system v19) utk mengirim biner asli, menghindari bug uri-object.
+// Multipart request utk punch berfoto. Memakai expo/fetch (WinterCG) yang
+// memakai part string/Blob/File (punya .bytes()). Part RN {uri,name,type}
+// TIDAK didukung dan melempar 'Unsupported FormDataPart implementation',
+// jadi file dikirim sebagai File (expo-file-system) atau failback Blob.
 async function multipartRequest(method, path, formData, { token, idempotencyKey } = {}) {
   const headers = {
     Accept: 'application/json',
@@ -126,6 +130,23 @@ async function multipartRequest(method, path, formData, { token, idempotencyKey 
     data = null;
   }
   return { status: res.status, data, text: '' };
+}
+
+// Konversi base64 ke Blob (RN) untuk dikirim sebagai part multipart oleh
+// expo/fetch. Selalu `instanceof Blob` sehingga didukung penuh (line 71
+// convertFormData). `filename` diset di masing-masing request saat append.
+function base64ToBlob(base64, mimeType, filename) {
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes.buffer], { type: mimeType || 'application/octet-stream' });
+  if (filename) {
+    try {
+      Object.defineProperty(blob, 'name', { value: filename, writable: true });
+    } catch (e) {}
+  }
+  return blob;
 }
 
 export async function apiLogin(email, password) {
@@ -209,7 +230,7 @@ export async function sendPunch(payload) {
     ? payload.photo
     : (payload.photo && typeof payload.photo.uri === 'string' ? payload.photo.uri : null);
 
-  // Jika ada foto, kirim via multipart FormData React Native
+  // Jika ada foto, kirim via multipart (expo/fetch WinterCG)
   if (photoUri) {
     const form = new FormData();
     form.append('punch_type', payload.punch_type);
@@ -252,11 +273,14 @@ export async function sendPunch(payload) {
       }
     });
 
-    form.append('photo', {
-      uri: photoUri,
-      name: payload.photo?.name || 'selfie.jpg',
-      type: payload.photo?.type || 'image/jpeg',
-    });
+    let photoPart;
+    try {
+      photoPart = new File(photoUri);
+    } catch (e) {
+      const b64 = await FileSystem.readAsStringAsync(photoUri, { encoding: FileSystem.EncodingType.Base64 });
+      photoPart = base64ToBlob(b64, payload.photo?.type || 'image/jpeg', payload.photo?.name || 'selfie.jpg');
+    }
+    form.append('photo', photoPart);
 
     const res = await multipartRequest('POST', '/api/attendance/punch', form, {
       token,

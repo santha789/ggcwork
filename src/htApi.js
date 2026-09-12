@@ -1,4 +1,5 @@
 import { getStoredToken } from './attendanceApi';
+import { File } from 'expo-file-system';
 
 const BASE = 'https://hrmggc.ggclinkgroup.com';
 
@@ -62,8 +63,8 @@ export async function htStream(afterId = 0) {
 export async function htBroadcast({ uri, mimeType, durationMs, audience }) {
   const token = await withToken();
   const form = new FormData();
-  const name = 'ht_' + Date.now() + '.' + (mimeType === 'audio/mp4' ? 'm4a' : 'webm');
-  form.append('audio', { uri, name, type: mimeType || 'audio/m4a' });
+  const audioPart = new File(uri);
+  form.append('audio', audioPart);
   form.append('duration_ms', String(Math.round(durationMs || 0)));
   form.append('audience', JSON.stringify(audience));
 
