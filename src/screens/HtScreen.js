@@ -151,6 +151,9 @@ const chunkBusyRef = useRef(false);
       case 'talk':
         updateTalker(m);
         break;
+      case 'talk_busy':
+        handleTalkBusy();
+        break;
       case 'audio':
         enqueueIncoming(m);
         break;
@@ -447,6 +450,13 @@ const chunkBusyRef = useRef(false);
       } catch (e) {}
     }
     sendWs({ type: 'stop_talk' });
+  }
+
+  function handleTalkBusy() {
+    if (talkingRef.current) {
+      stopTalkNow();
+      Alert.alert('Kanal Sibuk', 'Ada orang lain yang sedang bicara di kanal yang tersambung. Tunggu sebentar lalu coba lagi.');
+    }
   }
 
   // ---------- Target picker UI ----------
