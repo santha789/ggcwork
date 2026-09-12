@@ -43,6 +43,7 @@ export default function HtScreen({ user, onBack }) {
   const recordTimerRef = useRef(null);
   const recStartRef = useRef(null);
   const chunkRecorderRef = useRef(null);
+const chunkBusyRef = useRef(false);
 
   // WebSocket
   const wsRef = useRef(null);
@@ -326,6 +327,7 @@ export default function HtScreen({ user, onBack }) {
   }
 
   async function startChunk() {
+    if (chunkRecorderRef.current) return;
     try {
       const rec = new Audio.AudioModule.AudioRecorder(Audio.RecordingPresets.HIGH_QUALITY);
       chunkRecorderRef.current = rec;
@@ -337,32 +339,51 @@ export default function HtScreen({ user, onBack }) {
     }
   }
 
+  // Pemotongan chunk bersifat eksklusif: hanya satu caller yang boleh
+  // stop/release sebuah recorder. Tanpa guard ini, cutChunk dari timer bisa
+  // bentrok dgn cutChunk/stopTalkNow dari stopRecord -> recorder yang sama di
+  // release dua kali -> 'Cannot use shared object that was already released'.
   async function cutChunk() {
+    if (chunkBusyRef.current) return false;
     const rec = chunkRecorderRef.current;
-    if (!rec) return;
-    recReadyRef.current = false;
+    if (!rec) return false;
+    chunkBusyRef.current = true;
+    let uri = null;
     try {
-      await rec.stop();
-    } catch (e) {}
-    const uri = rec.uri;
-    rec.release?.();
-    chunkRecorderRef.current = null;
-    if (!uri) return;
+      await rec.stop().catch(() => {});
+      uri = rec.uri;
+      rec.release?.();
+      chunkRecorderRef.current = null;
+    } catch (e) {
+      chunkRecorderRef.current = null;
+    } finally {
+      chunkBusyRef.current = false;
+    }
+    if (!uri) return false;
     try {
       const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
       const dur = Math.max(1, CHUNK_MS);
       talkSeqRef.current += 1;
       sendWs({ type: 'audio', seq: talkSeqRef.current, dur, data: b64 });
-      FileSystem.deleteAsync(uri).catch(() => {});
     } catch (e) {}
+    FileSystem.deleteAsync(uri).catch(() => {});
+    return true;
+  }
+
+  async function waitChunkIdle() {
+    while (chunkBusyRef.current) {
+      await new Promise((r) => setTimeout(r, 30));
+    }
   }
 
   function startChunkLoop() {
     if (!talkingRef.current) return;
     startChunk();
     setTimeout(() => {
-      if (!talkingRef.current) return;
-      cutChunk().then(() => startChunkLoop());
+      cutChunk().then((ok) => {
+        if (!ok || !talkingRef.current) return;
+        startChunkLoop();
+      });
     }, CHUNK_MS);
   }
 
@@ -377,17 +398,18 @@ export default function HtScreen({ user, onBack }) {
     talkingRef.current = false;
     const ms = Date.now() - start;
     if (ms < 400) {
-      try {
-        if (chunkRecorderRef.current) {
-          await chunkRecorderRef.current.stop().catch(() => {});
-          chunkRecorderRef.current.release?.();
-          chunkRecorderRef.current = null;
-        }
-      } catch (e) {}
+      await waitChunkIdle();
+      const rec = chunkRecorderRef.current;
+      if (rec) {
+        rec.stop?.().catch(() => {});
+        rec.release?.();
+        chunkRecorderRef.current = null;
+      }
       sendWs({ type: 'stop_talk' });
       return;
     }
     await cutChunk();
+    await waitChunkIdle();
     sendWs({ type: 'stop_talk' });
   }
 
@@ -398,10 +420,11 @@ export default function HtScreen({ user, onBack }) {
       clearInterval(recordTimerRef.current);
       recordTimerRef.current = null;
     }
-    if (chunkRecorderRef.current) {
-      chunkRecorderRef.current.stop?.().catch(() => {});
-      chunkRecorderRef.current.release?.();
+    if (!chunkBusyRef.current && chunkRecorderRef.current) {
+      const rec = chunkRecorderRef.current;
       chunkRecorderRef.current = null;
+      rec.stop?.().catch(() => {});
+      rec.release?.();
     }
     sendWs({ type: 'stop_talk' });
   }
