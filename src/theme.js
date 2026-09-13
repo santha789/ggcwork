@@ -24,7 +24,7 @@ export const APP_VERSION =
   Constants.expoConfig?.version ||
   Constants.manifest2?.extra?.expoClient?.version ||
   Application.nativeApplicationVersion ||
-  '1.0.23';
+  '1.0.24';
 
 export function fmtMoney(v) {
   return fmtRp(v);

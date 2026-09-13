@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -130,7 +131,7 @@ export default function LoginScreen({ onLogin }) {
                 style={styles.buttonGrad}
               >
                 <Text style={styles.buttonText}>
-                  {loading ? 'Masuk...' : 'Masuk'}
+                  Masuk
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -139,6 +140,16 @@ export default function LoginScreen({ onLogin }) {
           <Text style={styles.footer}>GGCLINK Group © 2026 · v{APP_VERSION}</Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {loading ? (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color={colors.accentLight} />
+            <Text style={styles.loadingTitle}>Sedang Masuk...</Text>
+            <Text style={styles.loadingSubtitle}>Memverifikasi akun dan data karyawan</Text>
+          </View>
+        </View>
+      ) : null}
     </LinearGradient>
   );
 }
@@ -233,5 +244,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 28,
     fontSize: 12,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11, 17, 32, 0.78)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  loadingCard: {
+    backgroundColor: '#151d31',
+    borderRadius: 20,
+    paddingVertical: 24,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a3a5e',
+    elevation: 10,
+    minWidth: 240,
+  },
+  loadingTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 14,
+  },
+  loadingSubtitle: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: 'center',
   },
 });

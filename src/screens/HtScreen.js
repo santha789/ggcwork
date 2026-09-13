@@ -33,6 +33,7 @@ export default function HtScreen({ user, onBack }) {
   const [conn, setConn] = useState('off'); // off|connecting|open
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [featureAvailable, setFeatureAvailable] = useState(true);
 
   // PTT
   const [recording, setRecording] = useState(false);
@@ -234,8 +235,9 @@ const chunkBusyRef = useRef(false);
   }, []);
 
   useEffect(() => {
-    loadOptions();
-    connect();
+    loadOptions().then(() => {
+      connect();
+    });
   }, [loadOptions, connect]);
 
   useEffect(() => {
@@ -389,8 +391,10 @@ const chunkBusyRef = useRef(false);
   }
 
   async function waitChunkIdle() {
-    while (chunkBusyRef.current) {
+    let waited = 0;
+    while (chunkBusyRef.current && waited < 3000) {
       await new Promise((r) => setTimeout(r, 30));
+      waited += 30;
     }
   }
 
@@ -622,6 +626,35 @@ const chunkBusyRef = useRef(false);
   }
 
   if (error) return <Error message={error} onRetry={() => { setError(null); loadOptions(); }} />;
+  if (!loading && !featureAvailable) {
+
+    return (
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <View style={styles.headerTitleRow}>
+            <View style={styles.headerTitleCol}>
+              {onBack ? (
+                <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.7}>
+                  <MaterialIcons name="arrow-back" size={20} color={colors.text} />
+                </TouchableOpacity>
+              ) : null}
+              <View>
+                <Text style={styles.title}>Siaran HT</Text>
+                <Text style={styles.subtitle}>Fitur tidak tersedia</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View style={styles.empty}>
+          <MaterialIcons name="portable-wifi-off" size={56} color={colors.border} />
+          <Text style={[styles.emptyText, { fontSize: 15, fontWeight: '700', marginTop: 12 }]}>Fitur HT Dinonaktifkan</Text>
+          <Text style={styles.emptyText}>
+            Fitur Siaran HT dinonaktifkan untuk akun Anda oleh Admin/HR. Hubungi atasan jika kamu membutuhkan akses.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>

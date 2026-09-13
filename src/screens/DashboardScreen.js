@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getPage } from '../api';
+import { htOptions } from '../htApi';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
 import { fmtDate } from '../datefmt';
@@ -129,6 +130,7 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
   const [announcements, setAnnouncements] = useState([]);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [htAvailable, setHtAvailable] = useState(true);
   const [pageW, setPageW] = useState(0);
   const [page, setPage] = useState(0);
   const moreRef = useRef(null);
@@ -155,6 +157,12 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
       setError('');
     } catch (e) {
       setError(e.message);
+    }
+    try {
+      const htData = await htOptions();
+      setHtAvailable(htData.ht_feature_available !== false && htData.ht_enabled !== false);
+    } catch (e) {
+      setHtAvailable(false);
     }
   }, [user]);
 
@@ -356,12 +364,14 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
             />
           </View>
           <View style={[styles.quickPage, { width: pageW || '100%' }]}>
-            <QuickCircle
-              label="HT"
-              icon="radio"
-              color={colors.accentLight}
-              onPress={onOpenHT}
-            />
+            {htAvailable ? (
+              <QuickCircle
+                label="HT"
+                icon="radio"
+                color={colors.accentLight}
+                onPress={onOpenHT}
+              />
+            ) : null}
             <QuickCircle
               label="Pengumuman"
               value={unreadAnnouncementsCount}
