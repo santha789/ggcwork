@@ -392,7 +392,7 @@ const chunkBusyRef = useRef(false);
       // Simpan juga ke HTTP REST API untuk histori & push notif
       htBroadcast({
         uri,
-        mimeType: 'audio/mp4',
+        mimeType: 'audio/m4a',
         durationMs: durMs,
         audience: targets,
       }).catch((e) => {
