@@ -63,6 +63,9 @@ const chunkBusyRef = useRef(false);
   const [incoming, setIncoming] = useState([]);
   const incomingRef = useRef([]);
   const playerRef = useRef(null);
+  const playSubRef = useRef(null);
+  const playQueueRef = useRef([]);
+  const isPlayingRef = useRef(false);
   const playSeq = useRef(0);
   const autoPlayRef = useRef(true);
   const [autoPlay, setAutoPlay] = useState(true);
@@ -176,6 +179,94 @@ const chunkBusyRef = useRef(false);
     setWgLiveSafe(live);
   }
 
+  const processPlayQueue = useCallback(async () => {
+    if (isPlayingRef.current) return;
+    if (playQueueRef.current.length === 0) return;
+
+    const item = playQueueRef.current.shift();
+    if (!item || !item.data) {
+      isPlayingRef.current = false;
+      return;
+    }
+
+    isPlayingRef.current = true;
+    const tmp = FileSystem.cacheDirectory + 'ht_' + item.key + '.m4a';
+
+    try {
+      await FileSystem.writeAsStringAsync(tmp, item.data, { encoding: FileSystem.EncodingType.Base64 });
+
+      // Clean up previous subscription and player safely
+      if (playSubRef.current) {
+        try { playSubRef.current.remove(); } catch (e) {}
+        playSubRef.current = null;
+      }
+      if (playerRef.current) {
+        try {
+          playerRef.current.pause();
+          playerRef.current.remove();
+        } catch (e) {}
+        playerRef.current = null;
+      }
+
+      Audio.setIsAudioActiveAsync(true).catch(() => {});
+
+      // Use official createAudioPlayer with safe 500ms interval (never 0ms to prevent ANR UI-thread lock)
+      const player = Audio.createAudioPlayer(tmp, {
+        updateInterval: 500,
+        keepAudioSessionActive: true,
+      });
+      playerRef.current = player;
+      try {
+        player.volume = 1.0;
+      } catch (e) {}
+
+      let finished = false;
+      const cleanUp = () => {
+        if (finished) return;
+        finished = true;
+        if (playSubRef.current) {
+          try { playSubRef.current.remove(); } catch (e) {}
+          playSubRef.current = null;
+        }
+        if (playerRef.current === player) {
+          try {
+            player.pause();
+            player.remove();
+          } catch (e) {}
+          playerRef.current = null;
+        }
+        FileSystem.deleteAsync(tmp).catch(() => {});
+        isPlayingRef.current = false;
+        setTimeout(() => processPlayQueue(), 120);
+      };
+
+      playSubRef.current = player.addListener('playbackStatusUpdate', (status) => {
+        if (status?.didJustFinish || status?.playbackState === 'ended') {
+          cleanUp();
+        }
+      });
+
+      player.play();
+
+      const timeoutMs = Math.max(3000, (item.dur || 3000) + 3000);
+      setTimeout(() => {
+        if (!finished) cleanUp();
+      }, timeoutMs);
+
+    } catch (e) {
+      console.warn('[HT] Play error:', e?.message);
+      FileSystem.deleteAsync(tmp).catch(() => {});
+      isPlayingRef.current = false;
+      setTimeout(() => processPlayQueue(), 120);
+    }
+  }, []);
+
+  const playAudioItem = useCallback((item) => {
+    if (!item) return;
+    playQueueRef.current.push(item);
+    processPlayQueue();
+  }, [processPlayQueue]);
+
   function enqueueIncoming(m) {
     const item = {
       key: ++playSeq.current,
@@ -188,37 +279,10 @@ const chunkBusyRef = useRef(false);
     };
     incomingRef.current = [...incomingRef.current, item].slice(-40);
     setIncoming(incomingRef.current);
-    if (autoPlayRef.current) playAudioItem(item);
+    if (autoPlayRef.current) {
+      playAudioItem(item);
+    }
   }
-
-  const playAudioItem = useCallback(async (item) => {
-    try {
-      const tmp = FileSystem.cacheDirectory + 'ht_' + item.key + '.m4a';
-      await FileSystem.writeAsStringAsync(tmp, item.data, { encoding: FileSystem.EncodingType.Base64 });
-      if (playerRef.current) {
-        playerRef.current.release?.();
-      }
-      const player = new Audio.AudioModule.AudioPlayer({ uri: tmp }, 0, false, 0);
-      playerRef.current = player;
-      player.play();
-
-      const cur = playerRef.current;
-      const check = setInterval(() => {
-        const p = playerRef.current;
-        if (!p || p !== player) {
-          clearInterval(check);
-          return;
-        }
-        const st = p.currentStatus;
-        if (st?.didJustFinish || (p.playing === false && p.isLoaded && !p.paused)) {
-          clearInterval(check);
-          p.release?.();
-          if (playerRef.current === p) playerRef.current = null;
-          FileSystem.deleteAsync(tmp).catch(() => {});
-        }
-      }, 300);
-    } catch (e) {}
-  }, []);
 
   // ---------- Load & lifecycle ----------
   const loadOptions = useCallback(async () => {
@@ -257,10 +321,19 @@ const chunkBusyRef = useRef(false);
           wsRef.current.close();
         } catch (e) {}
       }
+      if (playSubRef.current) {
+        try { playSubRef.current.remove(); } catch (e) {}
+        playSubRef.current = null;
+      }
       if (playerRef.current) {
-        playerRef.current.release?.();
+        try {
+          playerRef.current.pause();
+          playerRef.current.remove();
+        } catch (e) {}
         playerRef.current = null;
       }
+      isPlayingRef.current = false;
+      playQueueRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -584,7 +657,11 @@ const chunkBusyRef = useRef(false);
 
   function renderStream({ item }) {
     return (
-      <View style={styles.segCard}>
+      <TouchableOpacity
+        style={styles.segCard}
+        onPress={() => playAudioItem(item)}
+        activeOpacity={0.7}
+      >
         <MaterialIcons name="graphic-eq" size={16} color={colors.accent} />
         <View style={styles.segBody}>
           <Text style={styles.segName} numberOfLines={1}>
@@ -592,7 +669,8 @@ const chunkBusyRef = useRef(false);
           </Text>
           <Text style={styles.segMeta}>{item.at} • chunk #{item.seq}</Text>
         </View>
-      </View>
+        <MaterialIcons name="volume-up" size={16} color={colors.muted} />
+      </TouchableOpacity>
     );
   }
 
