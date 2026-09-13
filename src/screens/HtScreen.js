@@ -13,7 +13,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Audio from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
-import { htOptions, htSetEnabled, htWsUrl } from '../htApi';
+import { htOptions, htSetEnabled, htWsUrl, htBroadcast } from '../htApi';
 import { getStoredToken } from '../attendanceApi';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
@@ -304,138 +304,100 @@ const chunkBusyRef = useRef(false);
     return false;
   }
 
-  // ---------- PTT: chunked realtime ----------
+  // ---------- PTT: Single clean recording session ----------
   async function startRecord() {
-    if (!enabled || recording || conn !== 'open') {
-      if (conn !== 'open') Alert.alert('Menghubungkan', 'Pindah HT sedang menyambung ulang. Coba lagi sebentar.');
+      if (conn !== 'open') Alert.alert('Menghubungkan', 'HT sedang menyambung ke server. Tunggu sebentar.');
       return;
     }
     const ok = await ensureMicPermission();
-    if (!ok) {
       Alert.alert('Izin Mikrofon', 'Aktifkan izin mikrofon untuk berbicara via HT.');
       return;
     }
-    setRecording(true);
-    setRecordMs(0);
-    recStartRef.current = Date.now();
-    talkingRef.current = true;
-    if (!sendWs({ type: 'start_talk' })) {
-      // fallback: tetap lanjut; server akan abort chunk kalau tak joined
-    }
-    recordTimerRef.current = setInterval(() => {
-      const ms = Date.now() - recStartRef.current;
-      setRecordMs(ms);
-      if (ms >= MAX_TALK_MS) stopRecord();
-    }, 100);
-    await startChunkLoop();
-  }
 
-  async function startChunk() {
-    if (chunkRecorderRef.current) return;
-    let rec = null;
     try {
-      rec = new Audio.AudioModule.AudioRecorder(Audio.RecordingPresets.HIGH_QUALITY);
-      chunkRecorderRef.current = rec;
-      try {
-        await rec.prepareToRecordAsync?.();
-      } catch (e) {
-        if (chunkRecorderRef.current === rec) chunkRecorderRef.current = null;
-        rec.release?.();
-        return;
+      if (chunkRecorderRef.current) {
+        try {
+          chunkRecorderRef.current.stop?.().catch(() => {});
+          chunkRecorderRef.current.release?.();
+        } catch (e) {}
+        chunkRecorderRef.current = null;
       }
-      // Preparasi async bisa selesai SETELAH kita di-stop/dilepas (press cepat
-      // atau unmount). Jangan sentuh recorder yang tak lagi jadi milik kita —
-      // memanggil record()/release() pada object yang sudah released akan
-      // melempar 'Cannot use shared object that was already released'.
-      if (chunkRecorderRef.current !== rec || !talkingRef.current) return;
+
+      sendWs({ type: 'start_talk' });
+
+      const rec = new Audio.AudioModule.AudioRecorder(Audio.RecordingPresets.HIGH_QUALITY);
+      chunkRecorderRef.current = rec;
+      await rec.prepareToRecordAsync?.();
       rec.record();
+
+      setRecording(true);
+      setRecordMs(0);
+      recStartRef.current = Date.now();
+      talkingRef.current = true;
+
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      recordTimerRef.current = setInterval(() => {
+        const ms = Date.now() - recStartRef.current;
+        setRecordMs(ms);
+        if (ms >= MAX_TALK_MS) stopRecord();
+      }, 100);
     } catch (e) {
-      if (chunkRecorderRef.current === rec) chunkRecorderRef.current = null;
-      try {
-        rec?.release?.();
-      } catch (e2) {}
+      console.warn('[HT] Gagal mulai rekam:', e?.message);
+      talkingRef.current = false;
+      setRecording(false);
+      sendWs({ type: 'stop_talk' });
+      Alert.alert('Rekam Gagal', 'Tidak dapat mengaktifkan mikrofon.');
     }
-  }
-
-  // Pemotongan chunk bersifat eksklusif: hanya satu caller yang boleh
-  // stop/release sebuah recorder. Tanpa guard ini, cutChunk dari timer bisa
-  // bentrok dgn cutChunk/stopTalkNow dari stopRecord -> recorder yang sama di
-  // release dua kali -> 'Cannot use shared object that was already released'.
-  async function cutChunk() {
-    if (chunkBusyRef.current) return false;
-    const rec = chunkRecorderRef.current;
-    if (!rec) return false;
-    chunkBusyRef.current = true;
-    let uri = null;
-    try {
-      await rec.stop().catch(() => {});
-      uri = rec.uri;
-      try {
-        rec.release?.();
-      } catch (e) {}
-      chunkRecorderRef.current = null;
-    } catch (e) {
-      chunkRecorderRef.current = null;
-    } finally {
-      chunkBusyRef.current = false;
-    }
-    if (!uri) return false;
-    try {
-      const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-      const dur = Math.max(1, CHUNK_MS);
-      talkSeqRef.current += 1;
-      sendWs({ type: 'audio', seq: talkSeqRef.current, dur, data: b64 });
-    } catch (e) {}
-    FileSystem.deleteAsync(uri).catch(() => {});
-    return true;
-  }
-
-  async function waitChunkIdle() {
-    let waited = 0;
-    while (chunkBusyRef.current && waited < 3000) {
-      await new Promise((r) => setTimeout(r, 30));
-      waited += 30;
-    }
-  }
-
-  async function startChunkLoop() {
-    if (!talkingRef.current) return;
-    await startChunk();
-    if (!talkingRef.current) return;
-    setTimeout(() => {
-      cutChunk().then((ok) => {
-        if (!ok || !talkingRef.current) return;
-        startChunkLoop();
-      });
-    }, CHUNK_MS);
   }
 
   async function stopRecord() {
-    if (!recording) return;
-    const start = recStartRef.current;
+    talkingRef.current = false;
     setRecording(false);
+
     if (recordTimerRef.current) {
       clearInterval(recordTimerRef.current);
       recordTimerRef.current = null;
     }
-    talkingRef.current = false;
-    const ms = Date.now() - start;
-    if (ms < 400) {
-      await waitChunkIdle();
-      const rec = chunkRecorderRef.current;
-      if (rec) {
-        chunkRecorderRef.current = null;
-        try {
-          rec.stop?.().catch(() => {});
-          rec.release?.();
-        } catch (e) {}
-      }
-      sendWs({ type: 'stop_talk' });
-      return;
-    }
-    await cutChunk();
-    await waitChunkIdle();
+
+    const rec = chunkRecorderRef.current;
+    chunkRecorderRef.current = null;
+    const durMs = Date.now() - (recStartRef.current || Date.now());
+
     sendWs({ type: 'stop_talk' });
+
+
+    try {
+      await rec.stop?.().catch(() => {});
+      const uri = rec.uri;
+      try {
+        rec.release?.();
+      } catch (e) {}
+
+
+      if (durMs < 600) {
+        FileSystem.deleteAsync(uri).catch(() => {});
+        return;
+      }
+
+      // Kirim audio langsung ke WebSocket untuk relay realtime ke pendengar
+      const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      talkSeqRef.current += 1;
+      sendWs({ type: 'audio', seq: talkSeqRef.current, dur: durMs, data: b64 });
+
+      // Simpan juga ke HTTP REST API untuk histori & push notif
+      htBroadcast({
+        uri,
+        mimeType: 'audio/mp4',
+        durationMs: durMs,
+        audience: targets,
+      }).catch((e) => {
+        console.warn('[HT] Broadcast backup error:', e?.message);
+      }).finally(() => {
+        FileSystem.deleteAsync(uri).catch(() => {});
+      });
+    } catch (e) {
+      console.warn('[HT] Stop record error:', e?.message);
+    }
   }
 
   function stopTalkNow() {
@@ -445,9 +407,9 @@ const chunkBusyRef = useRef(false);
       clearInterval(recordTimerRef.current);
       recordTimerRef.current = null;
     }
-    if (!chunkBusyRef.current && chunkRecorderRef.current) {
-      const rec = chunkRecorderRef.current;
-      chunkRecorderRef.current = null;
+    const rec = chunkRecorderRef.current;
+    chunkRecorderRef.current = null;
+    if (rec) {
       try {
         rec.stop?.().catch(() => {});
         rec.release?.();
