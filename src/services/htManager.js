@@ -1,7 +1,10 @@
 import * as Audio from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { htWsUrl } from "../htApi";
 import { getStoredToken } from "../attendanceApi";
+
+const STORAGE_KEY_ENABLED = "@ggcwork/ht_enabled";
 
 let ws = null;
 let reconnectTimer = null;
@@ -58,6 +61,27 @@ export function getHtState() {
 
 export function setHtEnabled(next) {
   isEnabled = !!next;
+  try {
+    AsyncStorage.setItem(STORAGE_KEY_ENABLED, isEnabled ? "1" : "0").catch(() => {});
+  } catch (e) {}
+
+  if (!isEnabled) {
+    // Purge queue and stop current audio immediately
+    playQueue.length = 0;
+    if (currentPlaySub) {
+      try { currentPlaySub.remove(); } catch (e) {}
+      currentPlaySub = null;
+    }
+    if (currentPlayer) {
+      try {
+        currentPlayer.pause();
+        currentPlayer.remove();
+      } catch (e) {}
+      currentPlayer = null;
+    }
+    isPlaying = false;
+  }
+
   pushConfig();
   notifySubscribers();
 }
@@ -95,6 +119,14 @@ export async function initHtService(user) {
     disconnectHt();
     return;
   }
+
+  // Restore saved isEnabled state
+  try {
+    const saved = await AsyncStorage.getItem(STORAGE_KEY_ENABLED);
+    if (saved !== null) {
+      isEnabled = saved === "1";
+    }
+  } catch (e) {}
 
   Audio.setAudioModeAsync({
     playsInSilentMode: true,
@@ -219,6 +251,8 @@ function handleMessage(m) {
     case "audio":
       // Echo prevention: jangan putar jika kita yang bicara atau dari userId sendiri
       if (talking) return;
+      // Strict mute/off air check: jika HT nonaktif, jangan proses atau bunyikan sama sekali
+      if (!isEnabled) return;
       if (myUserId && String(m.user_id) === String(myUserId)) return;
       if (activeUser?.id && String(m.user_id) === String(activeUser.id)) return;
       enqueueAudio(m);
@@ -246,6 +280,7 @@ function nowLabel() {
 
 function enqueueAudio(m) {
   if (talking) return;
+  if (!isEnabled) return;
   if (myUserId && String(m.user_id) === String(myUserId)) return;
   if (activeUser?.id && String(m.user_id) === String(activeUser.id)) return;
 
@@ -296,23 +331,29 @@ function enqueueAudio(m) {
 
   notifySubscribers();
 
-  if (autoPlay) {
+  if (autoPlay && isEnabled) {
     playAudio(item);
   }
 }
 
 export function playAudio(item) {
+  if (!isEnabled) return;
   if (!item || !item.data) return;
   playQueue.push(item);
   processQueue();
 }
 
 async function processQueue() {
+  if (!isEnabled) {
+    playQueue.length = 0;
+    isPlaying = false;
+    return;
+  }
   if (isPlaying) return;
   if (playQueue.length === 0) return;
 
   const item = playQueue.shift();
-  if (!item || !item.data) {
+  if (!item || !item.data || !isEnabled) {
     isPlaying = false;
     return;
   }
@@ -337,6 +378,13 @@ async function processQueue() {
         currentPlayer.remove();
       } catch (e) {}
       currentPlayer = null;
+    }
+
+    if (!isEnabled) {
+      FileSystem.deleteAsync(tmp).catch(() => {});
+      isPlaying = false;
+      playQueue.length = 0;
+      return;
     }
 
     Audio.setIsAudioActiveAsync(true).catch(() => {});
@@ -369,8 +417,11 @@ async function processQueue() {
       }
       FileSystem.deleteAsync(tmp).catch(() => {});
       isPlaying = false;
-      // Langsung proses antrian berikutnya tanpa delay
-      processQueue();
+      if (isEnabled) {
+        processQueue();
+      } else {
+        playQueue.length = 0;
+      }
     };
 
     currentPlaySub = player.addListener("playbackStatusUpdate", (status) => {
@@ -390,6 +441,8 @@ async function processQueue() {
     console.warn("[HT Manager] Play error:", e?.message);
     FileSystem.deleteAsync(tmp).catch(() => {});
     isPlaying = false;
-    processQueue();
+    if (isEnabled) {
+      processQueue();
+    }
   }
 }

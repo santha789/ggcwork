@@ -494,33 +494,55 @@ export default function HtScreen({ user, onBack }) {
                 <MaterialIcons name="arrow-back" size={20} color={colors.text} />
               </TouchableOpacity>
             ) : null}
-            <View>
+            <View style={styles.titleWrap}>
               <Text style={styles.title}>Siaran HT</Text>
-              <Text style={styles.subtitle}>Radio karyawan realtime • tekan-tahan untuk bicara</Text>
-            </View>
-          </View>
-          <View style={styles.headerActions}>
-            <View style={[styles.connPill, conn === 'open' ? styles.connOn : null]}>
-              <View style={[styles.connDot, conn === 'open' ? styles.connDotOn : null]} />
-              <Text style={[styles.connText, conn === 'open' && { color: colors.accent }]}>
-                {conn === 'open' ? 'ON AIR' : conn === 'connecting' ? 'MENYAMBUNG' : 'PUTUS'}
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {enabled
+                  ? (conn === 'open' ? 'Radio Walkie-Talkie Realtime' : 'Menghubungkan ke radio…')
+                  : 'HT Dimatikan (OFF AIR)'}
               </Text>
             </View>
-            <TouchableOpacity
-              style={[styles.toggleBtn, { backgroundColor: enabled ? colors.accent : colors.muted }]}
-              onPress={() => toggleEnabled(!enabled)}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name={enabled ? 'volume-up' : 'volume-off'} size={16} color="#fff" />
-            </TouchableOpacity>
           </View>
+
+          {/* Tombol ON AIR / OFF AIR yang rapi, menyatu, dan berfungsi langsung sebagai saklar */}
+          <TouchableOpacity
+            style={[
+              styles.powerBtn,
+              !enabled
+                ? styles.powerBtnOff
+                : (conn === 'open' ? styles.powerBtnOn : styles.powerBtnConnecting)
+            ]}
+            onPress={() => toggleEnabled(!enabled)}
+            activeOpacity={0.8}
+          >
+            <View style={[
+              styles.powerDot,
+              !enabled
+                ? styles.powerDotOff
+                : (conn === 'open' ? styles.powerDotOn : styles.powerDotConnecting)
+            ]} />
+            <MaterialIcons
+              name={!enabled ? 'volume-off' : (conn === 'open' ? 'sensors' : 'sync')}
+              size={15}
+              color={!enabled ? '#ef4444' : (conn === 'open' ? colors.accent : '#fbbf24')}
+            />
+            <Text style={[
+              styles.powerBtnText,
+              !enabled
+                ? styles.powerTextOff
+                : (conn === 'open' ? styles.powerTextOn : styles.powerTextConnecting)
+            ]}>
+              {!enabled ? 'OFF AIR' : (conn === 'open' ? 'ON AIR' : 'MENYAMBUNG')}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.targetRow}>
           <TouchableOpacity
-            style={[styles.targetChip, styles.targetChipMain]}
+            style={[styles.targetChip, styles.targetChipMain, !enabled && { opacity: 0.5 }]}
             onPress={() => setPickerOpen(true)}
             activeOpacity={0.8}
+            disabled={!enabled}
           >
             <MaterialIcons name={targets.all ? 'public' : 'filter-list'} size={16} color={colors.accent} />
             <Text style={styles.targetChipMainText} numberOfLines={1}>
@@ -528,17 +550,23 @@ export default function HtScreen({ user, onBack }) {
             </Text>
             <MaterialIcons name="keyboard-arrow-down" size={18} color={colors.accent} />
           </TouchableOpacity>
+
           <TouchableOpacity
-            style={[styles.autoPlayBtn, { borderColor: autoPlay ? colors.accent + '66' : colors.border }]}
+            style={[
+              styles.autoPlayBtn,
+              { borderColor: autoPlay ? colors.accent + '66' : colors.border },
+              !enabled && { opacity: 0.5 }
+            ]}
             onPress={() => { const n = !autoPlay; setAutoPlay(n); setHtAutoPlay(n); }}
             activeOpacity={0.8}
+            disabled={!enabled}
           >
             <MaterialIcons name={autoPlay ? 'play-circle-filled' : 'play-circle-outline'} size={18} color={autoPlay ? colors.accent : colors.muted} />
-            <Text style={[styles.autoPlayText, { color: autoPlay ? colors.accent : colors.muted }]}>Auto</Text>
+            <Text style={[styles.autoPlayText, { color: autoPlay ? colors.accent : colors.muted }]}>Auto Play</Text>
           </TouchableOpacity>
         </View>
 
-        {wgLive.length > 0 && (
+        {enabled && wgLive.length > 0 && (
           <View style={styles.liveBanner}>
             <MaterialIcons name="graphic-eq" size={18} color="#fff" />
             <Text style={styles.liveText} numberOfLines={1}>
@@ -557,29 +585,34 @@ export default function HtScreen({ user, onBack }) {
         {recording && (
           <View style={styles.recBadge}>
             <View style={styles.recDot} />
-            <Text style={styles.recText}>ON AIR {Math.max(1, Math.round(recordMs / 1000))}s</Text>
+            <Text style={styles.recText}>SIARAN LANGSUNG {Math.max(1, Math.round(recordMs / 1000))}s</Text>
           </View>
         )}
         <TouchableOpacity
-          style={[styles.pttBtn, (recording && styles.pttBtnRec) || (disabled && styles.pttBtnIdle)]}
+          style={[
+            styles.pttBtn,
+            (recording && styles.pttBtnRec) || (disabled && styles.pttBtnIdle)
+          ]}
           onPressIn={startRecord}
           onPressOut={stopRecord}
           disabled={!enabled}
           activeOpacity={0.9}
         >
-          <MaterialIcons name={recording ? 'mic' : 'mic-none'} size={44} color="#fff" />
+          <MaterialIcons name={recording ? 'mic' : disabled ? 'mic-off' : 'mic'} size={44} color="#fff" />
           <Text style={styles.pttLabel}>
             {recording
               ? 'Lepas untuk berhenti'
               : disabled
-              ? 'HT nonaktif — nyalakan untuk bicara'
+              ? 'HT Nonaktif (OFF AIR)'
               : conn !== 'open'
               ? 'Menyambung…'
               : 'Tekan & tahan untuk bicara'}
           </Text>
         </TouchableOpacity>
         <Text style={styles.pttHint}>
-          Realtime • disiarkan ke {targetCountLabel()} • maksimal 30 detik per siaran
+          {disabled
+            ? 'Radio HT sedang dimatikan • Ketuk tombol OFF AIR di atas untuk menyalakan'
+            : `Realtime • disiarkan ke ${targets.all ? 'semua' : targetCountLabel()} • maksimal 30 detik per siaran`}
         </Text>
       </View>
     );
@@ -825,39 +858,90 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.card,
   },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerTitleCol: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  headerTitleCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  titleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
   backBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { color: colors.text, fontWeight: 'bold', fontSize: 18 },
-  subtitle: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  connPill: {
+  title: {
+    color: colors.text,
+    fontWeight: 'bold',
+    fontSize: 18,
+    letterSpacing: -0.2,
+  },
+  subtitle: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  powerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1.5,
   },
-  connOn: { borderColor: colors.accent + '55' },
-  connDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.muted },
-  connDotOn: { backgroundColor: colors.accent },
-  connText: { color: colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  toggleBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
+  powerBtnOn: {
+    backgroundColor: '#0284c7' + '22',
+    borderColor: colors.accent,
+  },
+  powerBtnConnecting: {
+    backgroundColor: '#d97706' + '22',
+    borderColor: '#fbbf24',
+  },
+  powerBtnOff: {
+    backgroundColor: '#ef4444' + '18',
+    borderColor: '#ef4444' + '88',
+  },
+  powerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  powerDotOn: {
+    backgroundColor: colors.accent,
+  },
+  powerDotConnecting: {
+    backgroundColor: '#fbbf24',
+  },
+  powerDotOff: {
+    backgroundColor: '#ef4444',
+  },
+  powerBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  powerTextOn: {
+    color: colors.accent,
+  },
+  powerTextConnecting: {
+    color: '#fbbf24',
+  },
+  powerTextOff: {
+    color: '#ef4444',
   },
   targetRow: { flexDirection: 'row', marginTop: 12, flexWrap: 'wrap', gap: 8 },
   targetChip: {
