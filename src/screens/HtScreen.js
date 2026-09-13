@@ -13,7 +13,17 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Audio from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
-import { htOptions, htSetEnabled, htWsUrl, htBroadcast } from '../htApi';
+import { htOptions, htSetEnabled, htBroadcast } from '../htApi';
+import {
+  subscribeHt,
+  getHtState,
+  setHtEnabled,
+  setHtAutoPlay,
+  setHtTargets,
+  setHtTalking,
+  sendWsMessage,
+  playAudio,
+} from '../services/htManager';
 import { getStoredToken } from '../attendanceApi';
 import { Loading, Error } from '../components';
 import { colors } from '../theme';
@@ -110,10 +120,6 @@ export default function HtScreen({ user, onBack }) {
   const streamSeqRef = useRef(0);
   const myUserIdRef = useRef(null);
 
-  // WebSocket
-  const wsRef = useRef(null);
-  const reconnectRef = useRef(null);
-  const keepAliveRef = useRef(null);
   const [wgLive, setWgLive] = useState([]); // sedang bicara {user_id, fullname}
   const wgLiveRef = useRef([]);
 
@@ -126,129 +132,17 @@ export default function HtScreen({ user, onBack }) {
 
   // Incoming stream
   const [incoming, setIncoming] = useState([]);
-  const incomingRef = useRef([]);
-  const playerRef = useRef(null);
-  const playSubRef = useRef(null);
-  const playQueueRef = useRef([]);
-  const isPlayingRef = useRef(false);
-  const playSeq = useRef(0);
-  const autoPlayRef = useRef(true);
   const [autoPlay, setAutoPlay] = useState(true);
 
   const sendEnabledRef = useRef(true);
   const sendTargetsRef = useRef(targets);
   sendTargetsRef.current = targets;
   sendEnabledRef.current = enabled;
-  autoPlayRef.current = autoPlay;
 
   const setWgLiveSafe = (next) => {
     wgLiveRef.current = next;
     setWgLive(next);
   };
-
-  // ---------- WebSocket lifecycle ----------
-  const sendWs = useCallback((obj) => {
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(obj));
-      return true;
-    }
-    return false;
-  }, []);
-
-  const pushConfig = useCallback(() => {
-    if (!sendWs({ type: 'config', enabled: sendEnabledRef.current, audience: sendTargetsRef.current })) return;
-    setTimeout(() => sendWs({ type: 'join' }), 60);
-  }, [sendWs]);
-
-  const connect = useCallback(async () => {
-    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-    setConn('connecting');
-    let token = null;
-    try {
-      token = await getStoredToken();
-    } catch (e) {}
-    if (!token) {
-      setConn('off');
-      return;
-    }
-
-    const ws = new WebSocket(htWsUrl());
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setConn('open');
-      sendWs({ type: 'auth', token });
-      setTimeout(() => sendWs({ type: 'config', enabled: sendEnabledRef.current, audience: sendTargetsRef.current }), 50);
-      setTimeout(() => sendWs({ type: 'join' }), 120);
-    };
-    ws.onmessage = (ev) => {
-      let m = null;
-      try {
-        m = JSON.parse(ev.data);
-      } catch (e) {
-        return;
-      }
-      handleWsMessage(m);
-    };
-    ws.onerror = () => {};
-    ws.onclose = () => {
-      setConn('off');
-      setWgLiveSafe([]);
-      if (!reconnectRef.current) {
-        reconnectRef.current = setTimeout(() => {
-          reconnectRef.current = null;
-          connect();
-        }, RECONNECT_MS);
-      }
-    };
-  }, [sendWs]);
-
-  function handleWsMessage(m) {
-    switch (m.type) {
-      case 'ready':
-        pushConfig();
-        break;
-      case 'ack':
-        sendWs({ type: 'join' });
-        break;
-      case 'joined':
-        if (m.self?.user_id) myUserIdRef.current = m.self.user_id;
-        setWgLiveSafe(m.talkers || []);
-        break;
-      case 'talk':
-        updateTalker(m);
-        break;
-      case 'talk_busy':
-        handleTalkBusy();
-        break;
-      case 'audio':
-        // Echo & Loopback Guard:
-        // 1. Jangan bunyikan suara jika sedang menekan tombol bicara
-        if (talkingRef.current) return;
-        // 2. Jangan bunyikan suara yang berasal dari akun sendiri
-        if (myUserIdRef.current && m.user_id === myUserIdRef.current) return;
-        enqueueIncoming(m);
-        break;
-      case 'pong':
-        break;
-      default:
-        break;
-    }
-  }
-
-  function updateTalker(m) {
-    const live = wgLiveRef.current.slice();
-    const idx = live.findIndex((x) => x.user_id === m.user_id);
-    if (m.state) {
-      if (idx < 0) live.push({ user_id: m.user_id, fullname: m.fullname });
-    } else {
-      if (idx >= 0) live.splice(idx, 1);
-    }
-    setWgLiveSafe(live);
-  }
 
   const flushStreamChunk = useCallback((sampleRate = 16000) => {
     if (pcmListRef.current.length === 0) return;
@@ -262,139 +156,14 @@ export default function HtScreen({ user, onBack }) {
     if (b64) {
       streamSeqRef.current += 1;
       const dur = Math.round((pcm.byteLength / (sampleRate * 2)) * 1000);
-      sendWs({
+      sendWsMessage({
         type: 'audio',
         seq: streamSeqRef.current,
         dur,
         data: b64,
       });
     }
-  }, [sendWs]);
-
-  const processPlayQueue = useCallback(async () => {
-    if (isPlayingRef.current) return;
-    if (playQueueRef.current.length === 0) return;
-
-    const item = playQueueRef.current.shift();
-    if (!item || !item.data) {
-      isPlayingRef.current = false;
-      return;
-    }
-
-    isPlayingRef.current = true;
-    const ext = item.data?.startsWith('UklGR') ? 'wav' : 'm4a';
-    const tmp = FileSystem.cacheDirectory + 'ht_' + item.key + '.' + ext;
-
-    try {
-      await FileSystem.writeAsStringAsync(tmp, item.data, { encoding: FileSystem.EncodingType.Base64 });
-
-      if (playSubRef.current) {
-        try { playSubRef.current.remove(); } catch (e) {}
-        playSubRef.current = null;
-      }
-      if (playerRef.current) {
-        try {
-          playerRef.current.pause();
-          playerRef.current.remove();
-        } catch (e) {}
-        playerRef.current = null;
-      }
-
-      Audio.setIsAudioActiveAsync(true).catch(() => {});
-
-      const player = Audio.createAudioPlayer(tmp, {
-        updateInterval: 200,
-        keepAudioSessionActive: true,
-      });
-      playerRef.current = player;
-      try {
-        player.volume = 1.0;
-      } catch (e) {}
-
-      let finished = false;
-      const cleanUp = () => {
-        if (finished) return;
-        finished = true;
-        if (playSubRef.current) {
-          try { playSubRef.current.remove(); } catch (e) {}
-          playSubRef.current = null;
-        }
-        if (playerRef.current === player) {
-          try {
-            player.pause();
-            player.remove();
-          } catch (e) {}
-          playerRef.current = null;
-        }
-        FileSystem.deleteAsync(tmp).catch(() => {});
-        isPlayingRef.current = false;
-        processPlayQueue();
-      };
-
-      playSubRef.current = player.addListener('playbackStatusUpdate', (status) => {
-        if (status?.didJustFinish || status?.playbackState === 'ended') {
-          cleanUp();
-        }
-      });
-
-      player.play();
-
-      const timeoutMs = Math.max(1000, (item.dur || 400) + 1200);
-      setTimeout(() => {
-        if (!finished) cleanUp();
-      }, timeoutMs);
-
-    } catch (e) {
-      console.warn('[HT] Play error:', e?.message);
-      FileSystem.deleteAsync(tmp).catch(() => {});
-      isPlayingRef.current = false;
-      processPlayQueue();
-    }
   }, []);
-
-  const playAudioItem = useCallback((item) => {
-    if (!item) return;
-    playQueueRef.current.push(item);
-    processPlayQueue();
-  }, [processPlayQueue]);
-
-  function enqueueIncoming(m) {
-    if (talkingRef.current) return;
-    if (myUserIdRef.current && m.user_id === myUserIdRef.current) return;
-
-    const isContinuation = incomingRef.current.length > 0 &&
-      incomingRef.current[incomingRef.current.length - 1].user_id === m.user_id &&
-      (Date.now() - (incomingRef.current[incomingRef.current.length - 1].ts || 0)) < 4000;
-
-    let item;
-    if (isContinuation) {
-      const prev = incomingRef.current[incomingRef.current.length - 1];
-      item = {
-        ...prev,
-        dur: (prev.dur || 0) + (m.dur || 400),
-        seq: m.seq,
-        data: m.data,
-        ts: Date.now(),
-      };
-      incomingRef.current = [...incomingRef.current.slice(0, -1), item];
-    } else {
-      item = {
-        key: ++playSeq.current,
-        user_id: m.user_id,
-        fullname: m.fullname,
-        data: m.data,
-        dur: m.dur || 400,
-        at: nowLabel(),
-        seq: m.seq,
-        ts: Date.now(),
-      };
-      incomingRef.current = [...incomingRef.current, item].slice(-40);
-    }
-    setIncoming(incomingRef.current);
-    if (autoPlayRef.current) {
-      playAudioItem(item);
-    }
-  }
 
   // ---------- Load & lifecycle ----------
   const loadOptions = useCallback(async () => {
@@ -412,74 +181,41 @@ export default function HtScreen({ user, onBack }) {
   }, []);
 
   useEffect(() => {
-    loadOptions().then(() => {
-      connect();
+    loadOptions();
+    const unsub = subscribeHt((st) => {
+      setConn(st.conn);
+      setWgLiveSafe(st.talkers);
+      setIncoming(st.incoming);
+      setEnabled(st.enabled);
+      setAutoPlay(st.autoPlay);
     });
-  }, [loadOptions, connect]);
+    return () => unsub();
+  }, [loadOptions]);
 
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: true,
-      interruptionMode: 'doNotMix',
-      allowsRecording: true,
-    }).catch(() => {});
     return () => {
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
-      if (keepAliveRef.current) clearInterval(keepAliveRef.current);
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
-      if (wsRef.current) {
-        stopTalkNow();
-        try {
-          wsRef.current.close();
-        } catch (e) {}
-      }
-      if (playSubRef.current) {
-        try { playSubRef.current.remove(); } catch (e) {}
-        playSubRef.current = null;
-      }
-      if (playerRef.current) {
-        try {
-          playerRef.current.pause();
-          playerRef.current.remove();
-        } catch (e) {}
-        playerRef.current = null;
-      }
-      isPlayingRef.current = false;
-      playQueueRef.current = [];
+      if (streamTimerRef.current) clearInterval(streamTimerRef.current);
+      stopTalkNow();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keepalive + reconnect guard
-  useEffect(() => {
-    if (conn === 'open') {
-      if (keepAliveRef.current) clearInterval(keepAliveRef.current);
-      keepAliveRef.current = setInterval(() => sendWs({ type: 'ping' }), KEEPALIVE_MS);
-    }
-    return () => {
-      if (keepAliveRef.current) {
-        clearInterval(keepAliveRef.current);
-        keepAliveRef.current = null;
-      }
-    };
-  }, [conn, sendWs]);
-
   async function toggleEnabled(next) {
+    setHtEnabled(next);
     setEnabled(next);
     sendEnabledRef.current = next;
     try {
       const d = await htSetEnabled(next);
       setEnabled(!!d.ht_enabled);
       sendEnabledRef.current = !!d.ht_enabled;
+      setHtEnabled(!!d.ht_enabled);
     } catch (e) {
       setEnabled(!next);
       sendEnabledRef.current = !next;
+      setHtEnabled(!next);
       Alert.alert('Gagal', e?.message || 'Tidak dapat mengubah status HT.');
-      return;
     }
     if (!next && talkingRef.current) stopTalkNow();
-    setTimeout(() => pushConfig(), 100);
   }
 
   async function ensureMicPermission() {
@@ -523,12 +259,13 @@ export default function HtScreen({ user, onBack }) {
         streamTimerRef.current = null;
       }
 
-      sendWs({ type: 'start_talk' });
+      sendWsMessage({ type: 'start_talk' });
 
       setRecording(true);
       setRecordMs(0);
       recStartRef.current = Date.now();
       talkingRef.current = true;
+      setHtTalking(true);
       streamSeqRef.current = 0;
       pcmListRef.current = [];
 
@@ -551,11 +288,11 @@ export default function HtScreen({ user, onBack }) {
           await stream.start();
           useStream = true;
 
-          // Streaming chunk live setiap 400ms selagi pembicara bicara
+          // Streaming chunk live setiap 800ms selagi pembicara bicara
           streamTimerRef.current = setInterval(() => {
             if (!talkingRef.current) return;
             flushStreamChunk(16000);
-          }, 400);
+          }, 800);
 
         } catch (errStream) {
           console.warn('[HT] AudioStream start failed, fallback to AudioRecorder:', errStream?.message);
@@ -580,7 +317,7 @@ export default function HtScreen({ user, onBack }) {
       console.warn('[HT] Gagal mulai siaran:', e?.message);
       talkingRef.current = false;
       setRecording(false);
-      sendWs({ type: 'stop_talk' });
+      sendWsMessage({ type: 'stop_talk' });
       Alert.alert('Siaran Gagal', 'Tidak dapat mengaktifkan mikrofon.');
     }
   }
@@ -588,6 +325,7 @@ export default function HtScreen({ user, onBack }) {
   async function stopRecord() {
     if (!talkingRef.current && !recording) return;
     talkingRef.current = false;
+    setHtTalking(false);
     setRecording(false);
 
     if (recordTimerRef.current) {
@@ -614,7 +352,7 @@ export default function HtScreen({ user, onBack }) {
         stream.stop?.();
       } catch (e) {}
 
-      sendWs({ type: 'stop_talk' });
+      sendWsMessage({ type: 'stop_talk' });
       return;
     }
 
@@ -622,7 +360,7 @@ export default function HtScreen({ user, onBack }) {
     const rec = chunkRecorderRef.current;
     chunkRecorderRef.current = null;
     if (!rec) {
-      sendWs({ type: 'stop_talk' });
+      sendWsMessage({ type: 'stop_talk' });
       return;
     }
 
@@ -635,13 +373,13 @@ export default function HtScreen({ user, onBack }) {
 
       if (!uri || durMs < 500) {
         if (uri) FileSystem.deleteAsync(uri).catch(() => {});
-        sendWs({ type: 'stop_talk' });
+        sendWsMessage({ type: 'stop_talk' });
         return;
       }
 
       const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
       talkSeqRef.current += 1;
-      sendWs({ type: 'audio', seq: talkSeqRef.current, dur: durMs, data: b64 });
+      sendWsMessage({ type: 'audio', seq: talkSeqRef.current, dur: durMs, data: b64 });
 
       htBroadcast({
         uri,
@@ -654,15 +392,16 @@ export default function HtScreen({ user, onBack }) {
         FileSystem.deleteAsync(uri).catch(() => {});
       });
 
-      sendWs({ type: 'stop_talk' });
+      sendWsMessage({ type: 'stop_talk' });
     } catch (e) {
       console.warn('[HT] Stop record error:', e?.message);
-      sendWs({ type: 'stop_talk' });
+      sendWsMessage({ type: 'stop_talk' });
     }
   }
 
   function stopTalkNow() {
     talkingRef.current = false;
+    setHtTalking(false);
     setRecording(false);
     if (recordTimerRef.current) {
       clearInterval(recordTimerRef.current);
@@ -688,7 +427,7 @@ export default function HtScreen({ user, onBack }) {
         rec.release?.();
       } catch (e) {}
     }
-    sendWs({ type: 'stop_talk' });
+    sendWsMessage({ type: 'stop_talk' });
   }
 
   function handleTalkBusy() {
@@ -742,7 +481,7 @@ export default function HtScreen({ user, onBack }) {
 
   function applyTargets() {
     setPickerOpen(false);
-    setTimeout(() => pushConfig(), 120);
+    setHtTargets(targets);
   }
 
   function renderHeader() {
@@ -791,7 +530,7 @@ export default function HtScreen({ user, onBack }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.autoPlayBtn, { borderColor: autoPlay ? colors.accent + '66' : colors.border }]}
-            onPress={() => setAutoPlay(!autoPlay)}
+            onPress={() => { const n = !autoPlay; setAutoPlay(n); setHtAutoPlay(n); }}
             activeOpacity={0.8}
           >
             <MaterialIcons name={autoPlay ? 'play-circle-filled' : 'play-circle-outline'} size={18} color={autoPlay ? colors.accent : colors.muted} />
@@ -850,7 +589,7 @@ export default function HtScreen({ user, onBack }) {
     return (
       <TouchableOpacity
         style={styles.segCard}
-        onPress={() => playAudioItem(item)}
+        onPress={() => playAudio(item)}
         activeOpacity={0.7}
       >
         <MaterialIcons name="graphic-eq" size={16} color={colors.accent} />

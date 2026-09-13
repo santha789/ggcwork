@@ -40,6 +40,7 @@ import { safeNotif } from './src/notifCompat';
 import { openLastDownload } from './src/payrollPdf';
 import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
 import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
+import { initHtService, disconnectHt } from './src/services/htManager';
 import { getNotificationsSummary } from './src/chatApi';
 import ErrorBoundary from './src/ErrorBoundary';
 
@@ -238,6 +239,7 @@ function Main() {
           });
           initSilentPing(user.id).catch(() => {});
           registerFcmTokenToServer(user.id).catch(() => {});
+          initHtService(user).catch(() => {});
         }
       });
     }
@@ -362,6 +364,7 @@ function Main() {
       // tetap lanjut keluar
     }
     clearPageCache();
+    disconnectHt();
     setUser(null);
     setDashData(null);
     setProfile(null);
