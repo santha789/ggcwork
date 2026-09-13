@@ -366,9 +366,10 @@ const chunkBusyRef = useRef(false);
     chunkRecorderRef.current = null;
     const durMs = Date.now() - (recStartRef.current || Date.now());
 
-    sendWs({ type: 'stop_talk' });
-
-    if (!rec) return;
+    if (!rec) {
+      sendWs({ type: 'stop_talk' });
+      return;
+    }
 
     try {
       await rec.stop?.().catch(() => {});
@@ -377,14 +378,14 @@ const chunkBusyRef = useRef(false);
         rec.release?.();
       } catch (e) {}
 
-      if (!uri) return;
-
-      if (durMs < 600) {
-        FileSystem.deleteAsync(uri).catch(() => {});
+      if (!uri || durMs < 600) {
+        if (uri) FileSystem.deleteAsync(uri).catch(() => {});
+        sendWs({ type: 'stop_talk' });
         return;
       }
 
-      // Kirim audio langsung ke WebSocket untuk relay realtime ke pendengar
+      // Kirim audio SELAGI server masih menganggap kita 'talking' (server
+      // menolak audio kalau sudah stop_talk), baru stop_talk setelahnya.
       const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
       talkSeqRef.current += 1;
       sendWs({ type: 'audio', seq: talkSeqRef.current, dur: durMs, data: b64 });
@@ -400,8 +401,11 @@ const chunkBusyRef = useRef(false);
       }).finally(() => {
         FileSystem.deleteAsync(uri).catch(() => {});
       });
+
+      sendWs({ type: 'stop_talk' });
     } catch (e) {
       console.warn('[HT] Stop record error:', e?.message);
+      sendWs({ type: 'stop_talk' });
     }
   }
 
