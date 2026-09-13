@@ -2,7 +2,7 @@
   "expo": {
     "name": "GGC Work",
     "slug": "ggcwork",
-    "version": "1.0.32",
+    "version": "1.0.33",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.ggclink.ggcwork",
-      "versionCode": 25,
+      "versionCode": 26,
       "adaptiveIcon": {
         "backgroundColor": "#0f172a",
         "foregroundImage": "./assets/adaptive-icon.png",

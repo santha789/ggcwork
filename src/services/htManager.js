@@ -9,6 +9,7 @@ const STORAGE_KEY_ENABLED = "@ggcwork/ht_enabled";
 let ws = null;
 let reconnectTimer = null;
 let keepAliveTimer = null;
+let connTimeout = null;
 let activeUser = null;
 let myUserId = null;
 let isEnabled = true;
@@ -155,7 +156,12 @@ export function disconnectHt() {
   notifySubscribers();
 }
 
-export async function connectHt() {
+export async function connectHt(force = false) {
+  if (force && ws) {
+    try { ws.close(); } catch (e) {}
+    ws = null;
+  }
+
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
     return;
   }
@@ -177,9 +183,24 @@ export async function connectHt() {
     return;
   }
 
+  if (connTimeout) clearTimeout(connTimeout);
+  connTimeout = setTimeout(() => {
+    if (ws && ws.readyState === WebSocket.CONNECTING) {
+      console.warn("[HT] Connection timeout after 6s, forcing reconnect");
+      try { ws.close(); } catch (e) {}
+      ws = null;
+      notifySubscribers();
+      scheduleReconnect();
+    }
+  }, 6000);
+
   notifySubscribers();
 
   ws.onopen = () => {
+    if (connTimeout) {
+      clearTimeout(connTimeout);
+      connTimeout = null;
+    }
     if (keepAliveTimer) clearInterval(keepAliveTimer);
     keepAliveTimer = setInterval(() => {
       sendWsMessage({ type: "ping" });
@@ -209,6 +230,10 @@ export async function connectHt() {
   ws.onerror = () => {};
 
   ws.onclose = () => {
+    if (connTimeout) {
+      clearTimeout(connTimeout);
+      connTimeout = null;
+    }
     if (keepAliveTimer) clearInterval(keepAliveTimer);
     keepAliveTimer = null;
     ws = null;
@@ -219,11 +244,28 @@ export async function connectHt() {
 }
 
 function scheduleReconnect() {
-  if (reconnectTimer || !activeUser) return;
+  if (reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectHt();
-  }, 3000);
+  }, 2500);
+}
+
+export function reconnectHt() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (connTimeout) {
+    clearTimeout(connTimeout);
+    connTimeout = null;
+  }
+  if (ws) {
+    try { ws.close(); } catch (e) {}
+    ws = null;
+  }
+  notifySubscribers();
+  return connectHt(true);
 }
 
 function handleMessage(m) {

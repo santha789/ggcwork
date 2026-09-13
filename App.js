@@ -272,6 +272,16 @@ function Main() {
   }, [user, tab, loadChat]);
 
   useEffect(() => {
+    if (user) {
+      initHtService(user).catch(() => {});
+      initSilentPing(user.id).catch(() => {});
+      registerFcmTokenToServer(user.id).catch(() => {});
+    } else {
+      disconnectHt();
+    }
+  }, [user]);
+
+  useEffect(() => {
     if (user && dashData) {
       requestNotifPermission().then((granted) => {
         if (granted) {
@@ -281,9 +291,6 @@ function Main() {
             attendanceToday: dashData?.today,
             shift: dashData?.today?.shift || dashData?.shift,
           });
-          initSilentPing(user.id).catch(() => {});
-          registerFcmTokenToServer(user.id).catch(() => {});
-          initHtService(user).catch(() => {});
         }
       });
     }

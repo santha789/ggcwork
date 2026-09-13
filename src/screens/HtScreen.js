@@ -23,6 +23,9 @@ import {
   setHtTalking,
   sendWsMessage,
   playAudio,
+  initHtService,
+  connectHt,
+  reconnectHt,
 } from '../services/htManager';
 import { getStoredToken } from '../attendanceApi';
 import { Loading, Error } from '../components';
@@ -182,6 +185,11 @@ export default function HtScreen({ user, onBack }) {
 
   useEffect(() => {
     loadOptions();
+    if (user) {
+      initHtService(user).catch(() => {});
+    } else {
+      connectHt().catch(() => {});
+    }
     const unsub = subscribeHt((st) => {
       setConn(st.conn);
       setWgLiveSafe(st.talkers);
@@ -190,7 +198,7 @@ export default function HtScreen({ user, onBack }) {
       setAutoPlay(st.autoPlay);
     });
     return () => unsub();
-  }, [loadOptions]);
+  }, [loadOptions, user]);
 
   useEffect(() => {
     return () => {
@@ -229,7 +237,20 @@ export default function HtScreen({ user, onBack }) {
   // ---------- PTT: Realtime Streaming Audio ----------
   async function startRecord() {
     if (!enabled || recording || conn !== 'open') {
-      if (conn !== 'open') Alert.alert('Menghubungkan', 'HT sedang menyambung ke server. Tunggu sebentar.');
+      if (!enabled) {
+        Alert.alert('HT Off Air', 'Nyalakan tombol ON AIR di atas untuk berbicara.');
+        return;
+      }
+      if (conn !== 'open') {
+        Alert.alert(
+          'Menghubungkan ke Radio',
+          'HT sedang menyambung ke server. Ingin menghubungkan ulang sekarang?',
+          [
+            { text: 'Tunggu', style: 'cancel' },
+            { text: 'Hubungkan Ulang', onPress: () => reconnectHt() },
+          ]
+        );
+      }
       return;
     }
     const ok = await ensureMicPermission();
@@ -496,45 +517,68 @@ export default function HtScreen({ user, onBack }) {
             ) : null}
             <View style={styles.titleWrap}>
               <Text style={styles.title}>Siaran HT</Text>
-              <Text style={styles.subtitle} numberOfLines={1}>
-                {enabled
-                  ? (conn === 'open' ? 'Radio Walkie-Talkie Realtime' : 'Menghubungkan ke radio…')
-                  : 'HT Dimatikan (OFF AIR)'}
-              </Text>
             </View>
           </View>
 
-          {/* Tombol ON AIR / OFF AIR yang rapi, menyatu, dan berfungsi langsung sebagai saklar */}
+          {/* Tombol ON AIR / OFF AIR yang rapi dan elegan */}
           <TouchableOpacity
             style={[
               styles.powerBtn,
-              !enabled
-                ? styles.powerBtnOff
-                : (conn === 'open' ? styles.powerBtnOn : styles.powerBtnConnecting)
+              !enabled ? styles.powerBtnOff : styles.powerBtnOn
             ]}
             onPress={() => toggleEnabled(!enabled)}
             activeOpacity={0.8}
           >
             <View style={[
               styles.powerDot,
-              !enabled
-                ? styles.powerDotOff
-                : (conn === 'open' ? styles.powerDotOn : styles.powerDotConnecting)
+              !enabled ? styles.powerDotOff : styles.powerDotOn
             ]} />
             <MaterialIcons
-              name={!enabled ? 'volume-off' : (conn === 'open' ? 'sensors' : 'sync')}
-              size={15}
-              color={!enabled ? '#ef4444' : (conn === 'open' ? colors.accent : '#fbbf24')}
+              name={!enabled ? 'volume-off' : 'sensors'}
+              size={16}
+              color={!enabled ? '#ef4444' : '#10b981'}
             />
             <Text style={[
               styles.powerBtnText,
-              !enabled
-                ? styles.powerTextOff
-                : (conn === 'open' ? styles.powerTextOn : styles.powerTextConnecting)
+              !enabled ? styles.powerTextOff : styles.powerTextOn
             ]}>
-              {!enabled ? 'OFF AIR' : (conn === 'open' ? 'ON AIR' : 'MENYAMBUNG')}
+              {!enabled ? 'OFF AIR' : 'ON AIR'}
             </Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Subheader: Bar Status Koneksi & Kanal */}
+        <View style={styles.statusSubRow}>
+          <TouchableOpacity
+            style={styles.connBadge}
+            onPress={() => {
+              if (conn !== 'open') {
+                reconnectHt();
+                Alert.alert('Menghubungkan Ulang', 'Sedang mencoba menyambung kembali ke radio HT...');
+              }
+            }}
+            activeOpacity={conn !== 'open' ? 0.7 : 1}
+          >
+            <View style={[
+              styles.connBadgeDot,
+              conn === 'open' ? styles.connDotOpen : (conn === 'connecting' ? styles.connDotConnecting : styles.connDotOff)
+            ]} />
+            <Text style={[
+              styles.connBadgeText,
+              conn === 'open' ? styles.connTextOpen : (conn === 'connecting' ? styles.connTextConnecting : styles.connTextOff)
+            ]}>
+              {conn === 'open'
+                ? 'Terhubung'
+                : (conn === 'connecting' ? 'Menyambung… (ketuk refresh)' : 'Terputus (ketuk sambung)')}
+            </Text>
+            {conn !== 'open' && (
+              <MaterialIcons name="refresh" size={13} color="#f59e0b" style={{ marginLeft: 2 }} />
+            )}
+          </TouchableOpacity>
+
+          <Text style={styles.channelLabel} numberOfLines={1}>
+            {enabled ? (targets.all ? 'Semua Karyawan' : targetCountLabel()) : 'Radio Nonaktif'}
+          </Text>
         </View>
 
         <View style={styles.targetRow}>
@@ -897,51 +941,94 @@ const styles = StyleSheet.create({
   powerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1.5,
   },
   powerBtnOn: {
-    backgroundColor: '#0284c7' + '22',
-    borderColor: colors.accent,
-  },
-  powerBtnConnecting: {
-    backgroundColor: '#d97706' + '22',
-    borderColor: '#fbbf24',
+    backgroundColor: '#10b98118',
+    borderColor: '#10b981',
   },
   powerBtnOff: {
-    backgroundColor: '#ef4444' + '18',
-    borderColor: '#ef4444' + '88',
+    backgroundColor: '#ef444418',
+    borderColor: '#ef4444',
   },
   powerDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4,
   },
   powerDotOn: {
-    backgroundColor: colors.accent,
-  },
-  powerDotConnecting: {
-    backgroundColor: '#fbbf24',
+    backgroundColor: '#10b981',
   },
   powerDotOff: {
     backgroundColor: '#ef4444',
   },
   powerBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
   powerTextOn: {
-    color: colors.accent,
-  },
-  powerTextConnecting: {
-    color: '#fbbf24',
+    color: '#10b981',
   },
   powerTextOff: {
     color: '#ef4444',
+  },
+  statusSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  connBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.bg,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  connBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  connDotOpen: {
+    backgroundColor: '#10b981',
+  },
+  connDotConnecting: {
+    backgroundColor: '#f59e0b',
+  },
+  connDotOff: {
+    backgroundColor: '#ef4444',
+  },
+  connBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  connTextOpen: {
+    color: '#10b981',
+  },
+  connTextConnecting: {
+    color: '#f59e0b',
+  },
+  connTextOff: {
+    color: '#ef4444',
+  },
+  channelLabel: {
+    fontSize: 11,
+    color: colors.muted,
+    fontWeight: '500',
   },
   targetRow: { flexDirection: 'row', marginTop: 12, flexWrap: 'wrap', gap: 8 },
   targetChip: {

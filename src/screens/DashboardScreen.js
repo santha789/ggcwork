@@ -160,7 +160,7 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
     }
     try {
       const htData = await htOptions();
-      setHtAvailable(htData.ht_feature_available !== false && htData.ht_enabled !== false);
+      setHtAvailable(htData.ht_feature_available !== false);
     } catch (e) {
       setHtAvailable(true);
     }
