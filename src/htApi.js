@@ -1,4 +1,5 @@
 import { getStoredToken } from './attendanceApi';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const BASE = 'https://hrmggc.ggclinkgroup.com';
 
@@ -61,31 +62,26 @@ export async function htStream(afterId = 0) {
 
 export async function htBroadcast({ uri, mimeType, durationMs, audience }) {
   const token = await withToken();
-  const form = new FormData();
-  const filename = uri.split("/").pop() || "broadcast.m4a";
-  const cleanUri = uri.startsWith("file://") ? uri : "file://" + uri;
-  const finalName = filename.includes(".") ? filename : filename + ".m4a";
-  const finalMime = mimeType || "audio/m4a";
+  const cleanUri = uri.startsWith('file://') ? uri : 'file://' + uri;
 
-  form.append("audio", {
-    uri: cleanUri,
-    name: finalName,
-    type: finalMime,
-  });
-  form.append("duration_ms", String(Math.round(durationMs || 0)));
-  form.append("audience", JSON.stringify(audience));
-
-  const res = await fetch(BASE + '/api/v1/ht/broadcast', {
-    method: 'POST',
+  const res = await FileSystem.uploadAsync(BASE + '/api/v1/ht/broadcast', cleanUri, {
+    httpMethod: 'POST',
+    uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+    fieldName: 'audio',
+    mimeType: mimeType || 'audio/m4a',
     headers: {
       Accept: 'application/json',
       ...(token ? { Authorization: 'Bearer ' + token } : {}),
     },
-    body: form,
+    parameters: {
+      duration_ms: String(Math.round(durationMs || 0)),
+      audience: JSON.stringify(audience),
+    },
   });
+
   let data = null;
   try {
-    data = await res.json();
+    data = JSON.parse(res.body);
   } catch (e) {
     data = null;
   }
@@ -94,10 +90,10 @@ export async function htBroadcast({ uri, mimeType, durationMs, audience }) {
     err.unauthorized = true;
     throw err;
   }
-  if (!res.ok) {
+  if (res.status < 200 || res.status >= 300) {
     throw new Error(
       data?.errors?.audio?.[0] || data?.message || 'Kirim SIARAN gagal (status ' + res.status + ').'
     );
   }
-  return data.data;
+  return data?.data;
 }
