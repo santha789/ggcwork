@@ -27,6 +27,65 @@ function nowLabel() {
   return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+
+function concatArrayBuffers(buffers) {
+  let totalLength = 0;
+  for (let i = 0; i < buffers.length; i++) {
+    totalLength += (buffers[i]?.byteLength || 0);
+  }
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (let i = 0; i < buffers.length; i++) {
+    const b = buffers[i];
+    if (b && b.byteLength > 0) {
+      result.set(new Uint8Array(b), offset);
+      offset += b.byteLength;
+    }
+  }
+  return result.buffer;
+}
+
+function pcmToWavBase64(pcmBuffer, sampleRate = 16000, numChannels = 1) {
+  const pcmBytes = new Uint8Array(pcmBuffer);
+  const dataSize = pcmBytes.length;
+  if (dataSize === 0) return '';
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  function writeString(offset, string) {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  }
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, 'WAVE');
+
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // 1 = PCM
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * 2, true);
+  view.setUint16(32, numChannels * 2, true);
+  view.setUint16(34, 16, true);
+
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  new Uint8Array(buffer, 44).set(pcmBytes);
+
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  const chunkSize = 8192;
+  for (let i = 0; i < len; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 export default function HtScreen({ user, onBack }) {
   const [options, setOptions] = useState(null);
   const [enabled, setEnabled] = useState(true);
@@ -43,7 +102,12 @@ export default function HtScreen({ user, onBack }) {
   const recordTimerRef = useRef(null);
   const recStartRef = useRef(null);
   const chunkRecorderRef = useRef(null);
-const chunkBusyRef = useRef(false);
+  const chunkBusyRef = useRef(false);
+  const streamRef = useRef(null);
+  const streamSubRef = useRef(null);
+  const pcmListRef = useRef([]);
+  const streamTimerRef = useRef(null);
+  const streamSeqRef = useRef(0);
 
   // WebSocket
   const wsRef = useRef(null);
@@ -179,6 +243,27 @@ const chunkBusyRef = useRef(false);
     setWgLiveSafe(live);
   }
 
+  const flushStreamChunk = useCallback((sampleRate = 16000) => {
+    if (pcmListRef.current.length === 0) return;
+    const buffers = pcmListRef.current;
+    pcmListRef.current = [];
+
+    const pcm = concatArrayBuffers(buffers);
+    if (pcm.byteLength < 320) return;
+
+    const b64 = pcmToWavBase64(pcm, sampleRate, 1);
+    if (b64) {
+      streamSeqRef.current += 1;
+      const dur = Math.round((pcm.byteLength / (sampleRate * 2)) * 1000);
+      sendWs({
+        type: 'audio',
+        seq: streamSeqRef.current,
+        dur,
+        data: b64,
+      });
+    }
+  }, [sendWs]);
+
   const processPlayQueue = useCallback(async () => {
     if (isPlayingRef.current) return;
     if (playQueueRef.current.length === 0) return;
@@ -190,12 +275,12 @@ const chunkBusyRef = useRef(false);
     }
 
     isPlayingRef.current = true;
-    const tmp = FileSystem.cacheDirectory + 'ht_' + item.key + '.m4a';
+    const ext = item.data?.startsWith('UklGR') ? 'wav' : 'm4a';
+    const tmp = FileSystem.cacheDirectory + 'ht_' + item.key + '.' + ext;
 
     try {
       await FileSystem.writeAsStringAsync(tmp, item.data, { encoding: FileSystem.EncodingType.Base64 });
 
-      // Clean up previous subscription and player safely
       if (playSubRef.current) {
         try { playSubRef.current.remove(); } catch (e) {}
         playSubRef.current = null;
@@ -210,9 +295,8 @@ const chunkBusyRef = useRef(false);
 
       Audio.setIsAudioActiveAsync(true).catch(() => {});
 
-      // Use official createAudioPlayer with safe 500ms interval (never 0ms to prevent ANR UI-thread lock)
       const player = Audio.createAudioPlayer(tmp, {
-        updateInterval: 500,
+        updateInterval: 200,
         keepAudioSessionActive: true,
       });
       playerRef.current = player;
@@ -237,7 +321,7 @@ const chunkBusyRef = useRef(false);
         }
         FileSystem.deleteAsync(tmp).catch(() => {});
         isPlayingRef.current = false;
-        setTimeout(() => processPlayQueue(), 120);
+        processPlayQueue();
       };
 
       playSubRef.current = player.addListener('playbackStatusUpdate', (status) => {
@@ -248,7 +332,7 @@ const chunkBusyRef = useRef(false);
 
       player.play();
 
-      const timeoutMs = Math.max(3000, (item.dur || 3000) + 3000);
+      const timeoutMs = Math.max(1000, (item.dur || 400) + 1200);
       setTimeout(() => {
         if (!finished) cleanUp();
       }, timeoutMs);
@@ -257,7 +341,7 @@ const chunkBusyRef = useRef(false);
       console.warn('[HT] Play error:', e?.message);
       FileSystem.deleteAsync(tmp).catch(() => {});
       isPlayingRef.current = false;
-      setTimeout(() => processPlayQueue(), 120);
+      processPlayQueue();
     }
   }, []);
 
@@ -268,16 +352,34 @@ const chunkBusyRef = useRef(false);
   }, [processPlayQueue]);
 
   function enqueueIncoming(m) {
-    const item = {
-      key: ++playSeq.current,
-      user_id: m.user_id,
-      fullname: m.fullname,
-      data: m.data,
-      dur: m.dur,
-      at: nowLabel(),
-      seq: m.seq,
-    };
-    incomingRef.current = [...incomingRef.current, item].slice(-40);
+    const isContinuation = incomingRef.current.length > 0 &&
+      incomingRef.current[incomingRef.current.length - 1].user_id === m.user_id &&
+      (Date.now() - (incomingRef.current[incomingRef.current.length - 1].ts || 0)) < 4000;
+
+    let item;
+    if (isContinuation) {
+      const prev = incomingRef.current[incomingRef.current.length - 1];
+      item = {
+        ...prev,
+        dur: (prev.dur || 0) + (m.dur || 400),
+        seq: m.seq,
+        data: m.data,
+        ts: Date.now(),
+      };
+      incomingRef.current = [...incomingRef.current.slice(0, -1), item];
+    } else {
+      item = {
+        key: ++playSeq.current,
+        user_id: m.user_id,
+        fullname: m.fullname,
+        data: m.data,
+        dur: m.dur || 400,
+        at: nowLabel(),
+        seq: m.seq,
+        ts: Date.now(),
+      };
+      incomingRef.current = [...incomingRef.current, item].slice(-40);
+    }
     setIncoming(incomingRef.current);
     if (autoPlayRef.current) {
       playAudioItem(item);
@@ -377,7 +479,7 @@ const chunkBusyRef = useRef(false);
     return false;
   }
 
-  // ---------- PTT: Single clean recording session ----------
+  // ---------- PTT: Realtime Streaming Audio ----------
   async function startRecord() {
     if (!enabled || recording || conn !== 'open') {
       if (conn !== 'open') Alert.alert('Menghubungkan', 'HT sedang menyambung ke server. Tunggu sebentar.');
@@ -397,18 +499,65 @@ const chunkBusyRef = useRef(false);
         } catch (e) {}
         chunkRecorderRef.current = null;
       }
+      if (streamRef.current) {
+        try { streamRef.current.stop?.(); } catch (e) {}
+        streamRef.current = null;
+      }
+      if (streamSubRef.current) {
+        try { streamSubRef.current.remove(); } catch (e) {}
+        streamSubRef.current = null;
+      }
+      if (streamTimerRef.current) {
+        clearInterval(streamTimerRef.current);
+        streamTimerRef.current = null;
+      }
 
       sendWs({ type: 'start_talk' });
-
-      const rec = new Audio.AudioModule.AudioRecorder(Audio.RecordingPresets.HIGH_QUALITY);
-      chunkRecorderRef.current = rec;
-      await rec.prepareToRecordAsync?.();
-      rec.record();
 
       setRecording(true);
       setRecordMs(0);
       recStartRef.current = Date.now();
       talkingRef.current = true;
+      streamSeqRef.current = 0;
+      pcmListRef.current = [];
+
+      let useStream = false;
+      if (Audio.AudioModule?.AudioStream) {
+        try {
+          const stream = new Audio.AudioModule.AudioStream({
+            sampleRate: 16000,
+            channels: 1,
+            encoding: 'int16',
+          });
+          streamRef.current = stream;
+
+          streamSubRef.current = stream.addListener('audioStreamBuffer', (buffer) => {
+            if (buffer?.data) {
+              pcmListRef.current.push(buffer.data);
+            }
+          });
+
+          await stream.start();
+          useStream = true;
+
+          // Streaming chunk live setiap 400ms selagi pembicara bicara
+          streamTimerRef.current = setInterval(() => {
+            if (!talkingRef.current) return;
+            flushStreamChunk(16000);
+          }, 400);
+
+        } catch (errStream) {
+          console.warn('[HT] AudioStream start failed, fallback to AudioRecorder:', errStream?.message);
+          useStream = false;
+        }
+      }
+
+      if (!useStream) {
+        const rec = new Audio.AudioModule.AudioRecorder(Audio.RecordingPresets.HIGH_QUALITY);
+        chunkRecorderRef.current = rec;
+        await rec.prepareToRecordAsync?.();
+        rec.record();
+      }
 
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
       recordTimerRef.current = setInterval(() => {
@@ -417,11 +566,11 @@ const chunkBusyRef = useRef(false);
         if (ms >= MAX_TALK_MS) stopRecord();
       }, 100);
     } catch (e) {
-      console.warn('[HT] Gagal mulai rekam:', e?.message);
+      console.warn('[HT] Gagal mulai siaran:', e?.message);
       talkingRef.current = false;
       setRecording(false);
       sendWs({ type: 'stop_talk' });
-      Alert.alert('Rekam Gagal', 'Tidak dapat mengaktifkan mikrofon.');
+      Alert.alert('Siaran Gagal', 'Tidak dapat mengaktifkan mikrofon.');
     }
   }
 
@@ -434,11 +583,33 @@ const chunkBusyRef = useRef(false);
       clearInterval(recordTimerRef.current);
       recordTimerRef.current = null;
     }
+    if (streamTimerRef.current) {
+      clearInterval(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
 
-    const rec = chunkRecorderRef.current;
-    chunkRecorderRef.current = null;
     const durMs = Date.now() - (recStartRef.current || Date.now());
 
+    // 1. Jika mode live AudioStream:
+    if (streamRef.current) {
+      const stream = streamRef.current;
+      streamRef.current = null;
+      if (streamSubRef.current) {
+        try { streamSubRef.current.remove(); } catch (e) {}
+        streamSubRef.current = null;
+      }
+      try {
+        flushStreamChunk(stream.sampleRate || 16000);
+        stream.stop?.();
+      } catch (e) {}
+
+      sendWs({ type: 'stop_talk' });
+      return;
+    }
+
+    // 2. Jika fallback AudioRecorder:
+    const rec = chunkRecorderRef.current;
+    chunkRecorderRef.current = null;
     if (!rec) {
       sendWs({ type: 'stop_talk' });
       return;
@@ -451,19 +622,16 @@ const chunkBusyRef = useRef(false);
         rec.release?.();
       } catch (e) {}
 
-      if (!uri || durMs < 600) {
+      if (!uri || durMs < 500) {
         if (uri) FileSystem.deleteAsync(uri).catch(() => {});
         sendWs({ type: 'stop_talk' });
         return;
       }
 
-      // Kirim audio SELAGI server masih menganggap kita 'talking' (server
-      // menolak audio kalau sudah stop_talk), baru stop_talk setelahnya.
       const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
       talkSeqRef.current += 1;
       sendWs({ type: 'audio', seq: talkSeqRef.current, dur: durMs, data: b64 });
 
-      // Simpan juga ke HTTP REST API untuk histori & push notif
       htBroadcast({
         uri,
         mimeType: 'audio/m4a',
@@ -488,6 +656,18 @@ const chunkBusyRef = useRef(false);
     if (recordTimerRef.current) {
       clearInterval(recordTimerRef.current);
       recordTimerRef.current = null;
+    }
+    if (streamTimerRef.current) {
+      clearInterval(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
+    if (streamRef.current) {
+      try { streamRef.current.stop?.(); } catch (e) {}
+      streamRef.current = null;
+    }
+    if (streamSubRef.current) {
+      try { streamSubRef.current.remove(); } catch (e) {}
+      streamSubRef.current = null;
     }
     const rec = chunkRecorderRef.current;
     chunkRecorderRef.current = null;
