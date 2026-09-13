@@ -296,6 +296,23 @@ function Main() {
     }
   }, [user, dashData, profile]);
 
+  // Foreground notification vibration listener
+  useEffect(() => {
+    let sub = null;
+    safeNotif((mod) => {
+      sub = mod.addNotificationReceivedListener((notification) => {
+        const data = notification?.request?.content?.data;
+        if (data?.action === 'PING_LOCATION' || data?.type === 'PING_LOCATION') return;
+        try {
+          Vibration.vibrate([0, 300, 150, 300]);
+        } catch (e) {}
+      });
+    });
+    return () => {
+      if (sub?.remove) sub.remove();
+    };
+  }, []);
+
   // Handle notification tap: navigate to chat / announcement / checkout / downloads
   useEffect(() => {
     if (!user) return;

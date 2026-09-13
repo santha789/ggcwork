@@ -18,6 +18,7 @@ async function setupHandler() {
           };
         }
         return {
+          shouldShowAlert: true,
           shouldShowBanner: true,
           shouldShowList: true,
           shouldPlaySound: true,
@@ -29,6 +30,7 @@ async function setupHandler() {
 }
 
 setupHandler();
+ensureChannel();
 
 let configured = false;
 
@@ -39,23 +41,32 @@ async function ensureChannel() {
       await mod.setNotificationChannelAsync('default', {
         name: 'Notifikasi GGC Work',
         importance: mod.AndroidImportance.MAX,
+        enableVibrate: true,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#2563eb',
         sound: 'default',
+        showBadge: true,
+        lockscreenVisibility: mod.AndroidNotificationVisibility?.PUBLIC ?? 1,
       });
       await mod.setNotificationChannelAsync('chat_messages', {
         name: 'Pesan Chat GGC Work',
         importance: mod.AndroidImportance.MAX,
+        enableVibrate: true,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#2563eb',
         sound: 'default',
+        showBadge: true,
+        lockscreenVisibility: mod.AndroidNotificationVisibility?.PUBLIC ?? 1,
       });
       await mod.setNotificationChannelAsync('attendance_reminders', {
         name: 'Pengingat Absensi GGC Work',
         importance: mod.AndroidImportance.MAX,
+        enableVibrate: true,
         vibrationPattern: [0, 300, 200, 300],
         lightColor: '#e11d48',
         sound: 'default',
+        showBadge: true,
+        lockscreenVisibility: mod.AndroidNotificationVisibility?.PUBLIC ?? 1,
       });
       await mod.setNotificationChannelAsync('downloads', {
         name: 'Download File',

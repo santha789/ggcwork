@@ -1,3 +1,4 @@
+import { getStoredToken } from '../attendanceApi';
 import * as Location from 'expo-location';
 import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -112,6 +113,29 @@ export async function registerFcmTokenToServer(userId) {
 
   await AsyncStorage.setItem(FCM_TOKEN_KEY, tokenData.data);
 
+  // Send to /api/v1/fcm-token
+  try {
+    let bearer = null;
+    try {
+      bearer = await getStoredToken();
+    } catch (e) {}
+
+    await fetch(`${API_BASE}/api/v1/fcm-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        ..._authHeaders,
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        fcm_token: tokenData.data,
+      }),
+    });
+  } catch (e) {}
+
+  // Also send to /api/v1/location/ping-response
   try {
     const cookieRaw = await AsyncStorage.getItem('@ggcwork/cookie-jar');
     const jar = cookieRaw ? JSON.parse(cookieRaw) : {};
