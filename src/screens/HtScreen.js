@@ -108,6 +108,7 @@ export default function HtScreen({ user, onBack }) {
   const pcmListRef = useRef([]);
   const streamTimerRef = useRef(null);
   const streamSeqRef = useRef(0);
+  const myUserIdRef = useRef(null);
 
   // WebSocket
   const wsRef = useRef(null);
@@ -214,6 +215,7 @@ export default function HtScreen({ user, onBack }) {
         sendWs({ type: 'join' });
         break;
       case 'joined':
+        if (m.self?.user_id) myUserIdRef.current = m.self.user_id;
         setWgLiveSafe(m.talkers || []);
         break;
       case 'talk':
@@ -223,6 +225,11 @@ export default function HtScreen({ user, onBack }) {
         handleTalkBusy();
         break;
       case 'audio':
+        // Echo & Loopback Guard:
+        // 1. Jangan bunyikan suara jika sedang menekan tombol bicara
+        if (talkingRef.current) return;
+        // 2. Jangan bunyikan suara yang berasal dari akun sendiri
+        if (myUserIdRef.current && m.user_id === myUserIdRef.current) return;
         enqueueIncoming(m);
         break;
       case 'pong':
@@ -352,6 +359,9 @@ export default function HtScreen({ user, onBack }) {
   }, [processPlayQueue]);
 
   function enqueueIncoming(m) {
+    if (talkingRef.current) return;
+    if (myUserIdRef.current && m.user_id === myUserIdRef.current) return;
+
     const isContinuation = incomingRef.current.length > 0 &&
       incomingRef.current[incomingRef.current.length - 1].user_id === m.user_id &&
       (Date.now() - (incomingRef.current[incomingRef.current.length - 1].ts || 0)) < 4000;
@@ -390,6 +400,7 @@ export default function HtScreen({ user, onBack }) {
   const loadOptions = useCallback(async () => {
     try {
       const d = await htOptions();
+      if (d?.current_user_id) myUserIdRef.current = d.current_user_id;
       setOptions(d);
       setEnabled(!!d.ht_enabled);
       sendEnabledRef.current = !!d.ht_enabled;
