@@ -162,7 +162,7 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
       const htData = await htOptions();
       setHtAvailable(htData.ht_feature_available !== false && htData.ht_enabled !== false);
     } catch (e) {
-      setHtAvailable(false);
+      setHtAvailable(true);
     }
   }, [user]);
 
@@ -319,6 +319,14 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
               color={colors.emerald}
               onPress={onOpenAttendance}
             />
+            {htAvailable ? (
+              <QuickCircle
+                label="HT"
+                icon="radio"
+                color={colors.accentLight}
+                onPress={onOpenHT}
+              />
+            ) : null}
             <QuickCircle
               label="Jadwal Shift"
               icon="schedule"
@@ -364,14 +372,6 @@ export default function DashboardScreen({ user, initial, onNavigate, onOpenAtten
             />
           </View>
           <View style={[styles.quickPage, { width: pageW || '100%' }]}>
-            {htAvailable ? (
-              <QuickCircle
-                label="HT"
-                icon="radio"
-                color={colors.accentLight}
-                onPress={onOpenHT}
-              />
-            ) : null}
             <QuickCircle
               label="Pengumuman"
               value={unreadAnnouncementsCount}
