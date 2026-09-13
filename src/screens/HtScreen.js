@@ -306,10 +306,12 @@ const chunkBusyRef = useRef(false);
 
   // ---------- PTT: Single clean recording session ----------
   async function startRecord() {
+    if (!enabled || recording || conn !== 'open') {
       if (conn !== 'open') Alert.alert('Menghubungkan', 'HT sedang menyambung ke server. Tunggu sebentar.');
       return;
     }
     const ok = await ensureMicPermission();
+    if (!ok) {
       Alert.alert('Izin Mikrofon', 'Aktifkan izin mikrofon untuk berbicara via HT.');
       return;
     }
@@ -351,6 +353,7 @@ const chunkBusyRef = useRef(false);
   }
 
   async function stopRecord() {
+    if (!talkingRef.current && !recording) return;
     talkingRef.current = false;
     setRecording(false);
 
@@ -365,6 +368,7 @@ const chunkBusyRef = useRef(false);
 
     sendWs({ type: 'stop_talk' });
 
+    if (!rec) return;
 
     try {
       await rec.stop?.().catch(() => {});
@@ -373,6 +377,7 @@ const chunkBusyRef = useRef(false);
         rec.release?.();
       } catch (e) {}
 
+      if (!uri) return;
 
       if (durMs < 600) {
         FileSystem.deleteAsync(uri).catch(() => {});
