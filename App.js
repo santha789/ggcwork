@@ -89,6 +89,50 @@ function Main() {
     );
   }, []);
 
+  // Handle incoming push notification click (cold-start & background)
+  useEffect(() => {
+    let sub = null;
+    safeNotif(async (mod) => {
+      const handleData = (data) => {
+        if (!data) return;
+        if (data.action === 'ATTENDANCE_CHECKOUT_REMINDER' || data.type === 'attendance') {
+          setSubScreen('attendance');
+        } else if (data.action === 'OFFICIAL_ANNOUNCEMENT' || data.type === 'OFFICIAL_ANNOUNCEMENT') {
+          setSubScreen('pengumuman');
+        } else if (data.action === 'CHAT_MESSAGE' || data.type === 'CHAT_MESSAGE') {
+          if (data.room_id) setChatTarget(data.room_id);
+          setSubScreen(null);
+          setTab('chat');
+        } else if (data.action === 'CURHAT_NEW' || data.action === 'CURHAT_COMMENT' || data.type === 'curhat') {
+          if (data.post_id) setCurhatTarget(data.post_id);
+          setSubScreen(null);
+          setTab('curhat');
+        }
+      };
+
+      // 1. Cold-start check
+      try {
+        const lastResp = await mod.getLastNotificationResponseAsync?.();
+        if (lastResp?.notification?.request?.content?.data) {
+          handleData(lastResp.notification.request.content.data);
+        }
+      } catch (e) {}
+
+      // 2. Background click listener
+      try {
+        sub = mod.addNotificationResponseReceivedListener?.((response) => {
+          handleData(response?.notification?.request?.content?.data);
+        });
+      } catch (e) {}
+    });
+
+    return () => {
+      if (sub && typeof sub.remove === 'function') {
+        sub.remove();
+      }
+    };
+  }, []);
+
   const loadDashboard = useCallback(async () => {
     try {
       const props = await getPage('/dashboard');

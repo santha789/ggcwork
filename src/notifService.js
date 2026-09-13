@@ -50,6 +50,13 @@ async function ensureChannel() {
         lightColor: '#2563eb',
         sound: 'default',
       });
+      await mod.setNotificationChannelAsync('attendance_reminders', {
+        name: 'Pengingat Absensi GGC Work',
+        importance: mod.AndroidImportance.MAX,
+        vibrationPattern: [0, 300, 200, 300],
+        lightColor: '#e11d48',
+        sound: 'default',
+      });
       await mod.setNotificationChannelAsync('downloads', {
         name: 'Download File',
         importance: mod.AndroidImportance.DEFAULT,
