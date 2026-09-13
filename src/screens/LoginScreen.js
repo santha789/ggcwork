@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -141,15 +142,21 @@ export default function LoginScreen({ onLogin }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {loading ? (
-        <View style={styles.loadingOverlay}>
+      <Modal
+        transparent
+        visible={loading}
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => {}}
+      >
+        <View style={styles.loadingModalBackdrop}>
           <View style={styles.loadingCard}>
             <ActivityIndicator size="large" color={colors.accentLight} />
             <Text style={styles.loadingTitle}>Sedang Masuk...</Text>
             <Text style={styles.loadingSubtitle}>Memverifikasi akun dan data karyawan</Text>
           </View>
         </View>
-      ) : null}
+      </Modal>
     </LinearGradient>
   );
 }
@@ -245,23 +252,28 @@ const styles = StyleSheet.create({
     marginTop: 28,
     fontSize: 12,
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11, 17, 32, 0.78)',
+  loadingModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 10, 25, 0.78)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 999,
+    padding: 24,
   },
   loadingCard: {
     backgroundColor: '#151d31',
-    borderRadius: 20,
-    paddingVertical: 24,
+    borderRadius: 22,
+    paddingVertical: 26,
     paddingHorizontal: 28,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2a3a5e',
-    elevation: 10,
-    minWidth: 240,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    width: 260,
+    maxWidth: '85%',
   },
   loadingTitle: {
     color: '#fff',
