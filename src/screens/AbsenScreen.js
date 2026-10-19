@@ -259,11 +259,35 @@ export default function AbsenScreen({ onLoggedOut }) {
   const shift = today?.shift || null;
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const shiftStartMin = shift?.start_time ? timeToMin(shift.start_time) : null;
-  const inOpenMin = shiftStartMin !== null ? shiftStartMin - 120 : null;
-  const inGateOpen = punchType !== 'in' || inOpenMin === null || nowMin >= inOpenMin;
+  const shiftEndMin = shift?.end_time ? timeToMin(shift.end_time) : null;
 
-  const cooldown = getCooldownInfo(actionState, now);
-  const cooldownActive = cooldown.inCooldown && punchType === 'out';
+  // Aturan Presensi:
+  // 1. Absen Masuk: buka 1 jam (60m) sebelum shift, tutup 4 jam (240m) setelah shift mulai
+  const inOpenMin = shiftStartMin !== null ? shiftStartMin - 60 : null;
+  const inCloseMin = shiftStartMin !== null ? shiftStartMin + 240 : null;
+  // 2. Absen Pulang: buka 1 jam (60m) sebelum shift berakhir
+  const outOpenMin = shiftEndMin !== null ? shiftEndMin - 60 : null;
+
+  let gateOpen = true;
+  let gateMessage = '';
+  if (punchType === 'in') {
+    if (inOpenMin !== null && nowMin < inOpenMin) {
+      gateOpen = false;
+      gateMessage = 'Absen masuk belum dibuka. Dibuka 1 jam sebelum shift (pukul ' + fmtClock(inOpenMin) + ' WIB).';
+    } else if (inCloseMin !== null && nowMin > inCloseMin) {
+      gateOpen = false;
+      gateMessage = 'Batas waktu absen masuk telah berakhir (maksimal 4 jam setelah shift dimulai / pukul ' + fmtClock(inCloseMin) + ' WIB).';
+    }
+  } else if (punchType === 'out') {
+    if (outOpenMin !== null && nowMin < outOpenMin) {
+      gateOpen = false;
+      gateMessage = 'Absen pulang belum dibuka. Dibuka 1 jam sebelum jam pulang shift (pukul ' + fmtClock(outOpenMin) + ' WIB).';
+    }
+  }
+
+  const serverCanPunch = actionState.can_punch !== false;
+  const canPunch = serverCanPunch && gateOpen;
+  const punchMessage = !gateOpen ? gateMessage : (actionState.message || '');
 
   async function doPunch(photoUriArg) {
     if (!office) {
@@ -447,17 +471,13 @@ export default function AbsenScreen({ onLoggedOut }) {
           today={today}
           punchType={punchType}
           shift={shift}
-          inGateOpen={inGateOpen}
-          inOpenMin={inOpenMin}
-          nowMin={nowMin}
+          canPunch={canPunch}
+          punchMessage={punchMessage}
           inside={inside}
           distance={distance}
           radius={office?.radius_m || 20}
           allowAnywhere={allowAnywhere}
           punching={punching}
-          cooldownActive={cooldownActive}
-          cooldownLeft={cooldown.minutesLeft}
-          cooldownMsg={actionState.message}
           hasPhoto={!!photoUri}
           onPunch={doPunch}
         />
@@ -652,13 +672,12 @@ function DeviceBadge({ dev }) {
   );
 }
 
-function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, distance, radius, allowAnywhere, punching, cooldownActive, cooldownLeft, cooldownMsg, hasPhoto, onPunch }) {
+function PunchCard({ today, punchType, shift, canPunch, punchMessage, inside, distance, radius, allowAnywhere, punching, hasPhoto, onPunch }) {
   const attendance = today?.attendance;
   const hasIn = !!attendance?.clock_in;
   const hasOut = !!attendance?.clock_out;
-  const gatedIn = punchType === 'in' && !inGateOpen;
-  const disabled = !punchType || !inside || punching || gatedIn || cooldownActive;
-  const active = !!punchType && inside && !gatedIn && !punching && !cooldownActive;
+  const disabled = !punchType || !inside || punching || !canPunch;
+  const active = !!punchType && inside && canPunch && !punching;
 
   const action =
     !punchType
@@ -673,15 +692,13 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
 
   const caption = punching
     ? 'Memproses…'
-    : cooldownActive
-      ? 'Terkunci • ' + cooldownLeft + ' mnt lagi'
-      : gatedIn
-        ? 'Terbuka pukul ' + fmtClock(inOpenMin) + ' WIB'
-        : !inside && distance !== null
-          ? allowAnywhere
-            ? (hasPhoto ? 'Foto selfie siap • Sentuh untuk absen' : 'Ambil selfie & absen (lokasi bebas)')
-            : 'Di luar radius ' + radius + ' m'
-          : (hasPhoto ? 'Foto selfie siap • Sentuh untuk absen' : 'Ambil foto selfie & absen');
+    : !canPunch
+      ? (punchMessage || 'Belum masuk jadwal presensi')
+      : !inside && distance !== null
+        ? allowAnywhere
+          ? (hasPhoto ? 'Foto selfie siap • Sentuh untuk absen' : 'Ambil selfie & absen (lokasi bebas)')
+          : 'Di luar radius ' + radius + ' m'
+        : (hasPhoto ? 'Foto selfie siap • Sentuh untuk absen' : 'Ambil foto selfie & absen');
 
   const gradColors = active ? [colors.indigo, colors.accent] : [colors.cardAlt, colors.cardAlt];
   const glyphColor = active ? '#fff' : colors.muted;
@@ -719,10 +736,10 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
         </View>
       </View>
 
-      {cooldownActive && cooldownMsg ? (
+      {!canPunch && punchMessage ? (
         <View style={styles.cooldownBanner}>
           <MaterialIcons name="lock-clock" size={16} color={colors.yellow} />
-          <Text style={styles.cooldownText}>{cooldownMsg}</Text>
+          <Text style={styles.cooldownText}>{punchMessage}</Text>
         </View>
       ) : null}
 

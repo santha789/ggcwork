@@ -294,7 +294,12 @@ export async function postJsonApi(path, body, extraHeaders) {
 export async function getPage(path) {
   const res = await request('GET', path);
   if (res.status === 401) {
-    if (typeof _unauthorizedCb === 'function') _unauthorizedCb(true);
+    try {
+      const data = JSON.parse(res.text);
+      if (data?.force_logout && typeof _unauthorizedCb === 'function') {
+        _unauthorizedCb(true);
+      }
+    } catch (e) {}
     throw new Error('Sesi berakhir. Silakan login ulang.');
   }
   if (res.status === 419) {

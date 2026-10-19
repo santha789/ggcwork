@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { getPage } from '../api';
+import { getPage, getJsonApi, postJsonApi } from '../api';
 import { colors } from '../theme';
 import { fmtDate } from '../datefmt';
 
@@ -77,36 +77,18 @@ function AnnouncementCard({ item, onPress }) {
 }
 
 function AnnouncementDetail({ item, onBack }) {
-  const [loading, setLoading] = useState(true);
-  const [detail, setDetail] = useState(null);
+  const [detail, setDetail] = useState(item);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await getPage(`/api/v1/announcements/${item.id}`);
-        setDetail(res.announcement || res);
-      } catch (e) {
-        // try alternative path
-        try {
-          const res2 = await getPage(`/announcements/${item.id}`);
-          setDetail(res2.announcement || res2);
-        } catch (e2) {
-          // use list data as fallback
-          setDetail(item);
-        }
-      }
-      setLoading(false);
-    })();
-  }, [item.id]);
-
-  if (loading) {
-    return (
-      <View style={styles.loadingWrap}>
-        <MaterialIcons name="hourglass-empty" size={32} color={colors.muted} />
-        <Text style={styles.loadingText}>Memuat pengumuman...</Text>
-      </View>
-    );
-  }
+    if (!item?.id) return;
+    // Mark as read and fetch full detail safely
+    postJsonApi(`/api/v1/announcements/${item.id}/read`).catch(() => {});
+    getJsonApi(`/api/v1/announcements/${item.id}`)
+      .then((res) => {
+        if (res?.announcement) setDetail(res.announcement);
+      })
+      .catch(() => {});
+  }, [item?.id]);
 
   const d = detail || item;
 
