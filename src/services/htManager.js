@@ -173,6 +173,9 @@ export async function connectHt(force = false) {
 
   if (!token) {
     notifySubscribers();
+    if (activeUser) {
+      scheduleReconnect();
+    }
     return;
   }
 

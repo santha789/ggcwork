@@ -39,21 +39,20 @@ export default function LoginScreen({ onLogin }) {
     try {
       // 1. Login web (cookie) untuk fitur lama: dashboard, chat, curhat, dll.
       const props = await login(email.trim(), password);
-      // 2. Masuk dashboard segera (jangan menunggu apiLogin), supaya login
-      //    terasa instan. apiLogin (token absen) jalan di background; gagal
-      //    TIDAK memblokir masuk, absen bisa disambungkan lagi di tab Absen.
       await storeLoginEmail(email.trim());
-      onLogin(props);
+      // 2. Dapatkan token API Sanctum terlebih dahulu agar background service
+      //    (seperti HT walkie-talkie & absensi) langsung aktif tanpa harus buka layarnya.
       try {
         await apiLogin(email.trim(), password);
       } catch (apiErr) {
         console.log('apiLogin failed:', apiErr && apiErr.message);
         setHint(
-          'Kamu berhasil masuk, tapi layanan absen belum tersambung (' +
+          'Kamu berhasil masuk, tapi layanan absen/HT belum tersambung (' +
             ((apiErr && apiErr.message) || 'gagal') +
-            '). Buka tab Absen untuk menyambungkannya.'
+            ').'
         );
       }
+      onLogin(props);
     } catch (e) {
       console.log('LOGIN_DEBUG error=', e);
       console.log('LOGIN_DEBUG msg=', e && e.message, 'type=', typeof e);

@@ -293,12 +293,19 @@ export default function AbsenScreen({ onLoggedOut }) {
     setPunching(true);
     try {
       const loc = location || (await getCurrentLocation());
+      let finalAddress = address;
+      if (!finalAddress && loc?.coords) {
+        try {
+          finalAddress = await reverseGeocode(loc.coords.latitude, loc.coords.longitude);
+        } catch (e) {}
+      }
       const payload = await buildPunchPayload(punchType, office, loc, {
         photo: uri ? {
           uri: uri,
           name: 'selfie.jpg',
           type: 'image/jpeg',
         } : null,
+        address: finalAddress || null,
         batteryLevel: null,
       });
       const res = await sendPunch(payload);

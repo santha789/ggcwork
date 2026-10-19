@@ -40,7 +40,7 @@ import { safeNotif } from './src/notifCompat';
 import { openLastDownload } from './src/payrollPdf';
 import { getCachedPage, saveCachedPage, clearPageCache } from './src/pageCache';
 import { initSilentPing, setAuthHeaders, registerFcmTokenToServer } from './src/services/silentPing';
-import { initHtService, disconnectHt } from './src/services/htManager';
+import { initHtService, disconnectHt, subscribeHt } from './src/services/htManager';
 import { getNotificationsSummary } from './src/chatApi';
 import ErrorBoundary from './src/ErrorBoundary';
 
@@ -76,6 +76,7 @@ function Main() {
   const [curhatTarget, setCurhatTarget] = useState(null);
   const [inChatRoom, setInChatRoom] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [htTalkers, setHtTalkers] = useState([]);
   const pollRef = useRef(null);
   const tabRef = useRef(tab);
   const subScreenRef = useRef(subScreen);
@@ -321,6 +322,17 @@ function Main() {
       });
     }
   }, [user, dashData, profile]);
+
+  useEffect(() => {
+    if (!user) {
+      setHtTalkers([]);
+      return;
+    }
+    const unsub = subscribeHt((st) => {
+      setHtTalkers(st.talkers || []);
+    });
+    return () => unsub();
+  }, [user]);
 
   // Foreground notification vibration & force logout listener
   useEffect(() => {
@@ -711,6 +723,21 @@ function Main() {
         </LinearGradient>
       ) : null}
 
+      {htTalkers.length > 0 && subScreen !== 'ht' && tab !== 'ht' ? (
+        <TouchableOpacity
+          style={styles.htLiveBanner}
+          activeOpacity={0.85}
+          onPress={() => setSubScreen('ht')}
+        >
+          <View style={styles.htLivePulse} />
+          <MaterialIcons name="radio" size={16} color="#ffffff" />
+          <Text style={styles.htLiveText} numberOfLines={1}>
+            {htTalkers.map((t) => t.fullname || 'Seseorang').join(', ')} sedang bicara di HT...
+          </Text>
+          <Text style={styles.htLiveAction}>Buka HT ›</Text>
+        </TouchableOpacity>
+      ) : null}
+
       <View style={styles.body}>{screen}</View>
 
       {!hideMainChrome ? (
@@ -952,5 +979,30 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: colors.accent,
     fontWeight: '700',
+  },
+  htLiveBanner: {
+    backgroundColor: '#dc2626',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  htLivePulse: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ffffff',
+  },
+  htLiveText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  htLiveAction: {
+    color: '#fef08a',
+    fontSize: 12,
+    fontWeight: '800',
   },
 });
