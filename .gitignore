@@ -23,3 +23,5 @@ yarn-error.*
 .DS_Store
 Thumbs.db
 *.bak
+Telegram Desktop/
+

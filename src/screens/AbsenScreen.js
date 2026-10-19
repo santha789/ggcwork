@@ -244,7 +244,7 @@ export default function AbsenScreen({ onLoggedOut }) {
   const allowAnywhere = !!today?.allow_anywhere_punch;
   const inside = allowAnywhere
     ? distance !== null
-    : distance !== null && distance <= (office?.radius_m || 100);
+    : distance !== null && distance <= (office?.radius_m || 20);
 
   const attendance = today?.attendance;
   const hasIn = !!attendance?.clock_in;
@@ -277,16 +277,15 @@ export default function AbsenScreen({ onLoggedOut }) {
     if (!inside && !allowAnywhere) {
       Alert.alert(
         'Di luar area kantor',
-        'Kamu berada ' + fmtDist(distance) + ' dari kantor. Radius absen ' + (office?.radius_m || 100) + ' m.'
+        'Kamu berada ' + fmtDist(distance) + ' dari kantor. Radius absen ' + (office?.radius_m || 20) + ' m.'
       );
       return;
     }
-    // Foto selfie sebagai bukti evident:
-    // HANYA jika karyawan DIBEBASKAN absen di mana saja (allowAnywhere).
-    // Karyawan standar dalam radius kantor TIDAK PERLU foto (cukup 1-tap absen).
+    // Foto selfie sebagai bukti evident resmi:
+    // SEMUA presensi (baik di kantor dalam radius 20m maupun di luar kantor) WAJIB menggunakan foto selfie
     const validUriArg = (typeof photoUriArg === 'string' && photoUriArg.length > 0) ? photoUriArg : null;
     const uri = validUriArg || (typeof photoUri === 'string' ? photoUri : null);
-    if (allowAnywhere && !uri) {
+    if (!uri) {
       openCamera();
       return;
     }
@@ -430,7 +429,7 @@ export default function AbsenScreen({ onLoggedOut }) {
         locating={locating}
         locError={locError}
         distance={distance}
-        radius={office?.radius_m || 100}
+        radius={office?.radius_m || 20}
         inside={inside}
         allowAnywhere={allowAnywhere}
         onLocate={locate}
@@ -446,7 +445,7 @@ export default function AbsenScreen({ onLoggedOut }) {
           nowMin={nowMin}
           inside={inside}
           distance={distance}
-          radius={office?.radius_m || 100}
+          radius={office?.radius_m || 20}
           allowAnywhere={allowAnywhere}
           punching={punching}
           cooldownActive={cooldownActive}
@@ -467,7 +466,7 @@ export default function AbsenScreen({ onLoggedOut }) {
         now={now}
         location={location}
         distance={distance}
-        radius={office?.radius_m || 100}
+        radius={office?.radius_m || 20}
         office={office}
         address={address}
         allowAnywhere={allowAnywhere}
@@ -478,7 +477,7 @@ export default function AbsenScreen({ onLoggedOut }) {
       <Text style={styles.footnote}>
         {allowAnywhere
           ? 'Kamu dapat absen dari lokasi mana pun — posisi tetap direkam saat absen.'
-          : 'Verifikasi lokasi radius ' + (office?.radius_m || 100) + ' m dari ' + (office?.name || 'kantor') + '.'}
+          : 'Verifikasi lokasi radius ' + (office?.radius_m || 20) + ' m dari ' + (office?.name || 'kantor') + '.'}
       </Text>
     </ScrollView>
   );
@@ -576,7 +575,7 @@ function OfficeCard({ office, allowAnywhere }) {
       <Text style={styles.officeSub}>
         {allowAnywhere
           ? 'Absen lokasi bebas — dilapangan / mobilisasi'
-          : 'Radius absen ' + (office?.radius_m || 100) + ' m'}
+          : 'Radius absen ' + (office?.radius_m || 20) + ' m'}
       </Text>
     </View>
   );
@@ -673,11 +672,9 @@ function PunchCard({ today, punchType, shift, inGateOpen, inOpenMin, inside, dis
         ? 'Terbuka pukul ' + fmtClock(inOpenMin) + ' WIB'
         : !inside && distance !== null
           ? allowAnywhere
-            ? (hasPhoto ? 'Foto selfie siap' : 'Wajib selfie (lokasi bebas)')
+            ? (hasPhoto ? 'Foto selfie siap • Sentuh untuk absen' : 'Ambil selfie & absen (lokasi bebas)')
             : 'Di luar radius ' + radius + ' m'
-          : allowAnywhere
-            ? (hasPhoto ? 'Foto selfie siap' : 'Wajib selfie (lokasi bebas)')
-            : 'Sentuh untuk absen langsung';
+          : (hasPhoto ? 'Foto selfie siap • Sentuh untuk absen' : 'Ambil foto selfie & absen');
 
   const gradColors = active ? [colors.indigo, colors.accent] : [colors.cardAlt, colors.cardAlt];
   const glyphColor = active ? '#fff' : colors.muted;

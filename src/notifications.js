@@ -255,12 +255,30 @@ export function buildSchedules({ dashboard, profile, attendanceToday, shift }) {
   const out = [];
   const today = startOfDay(new Date());
 
-  // 1. Pengingat Absen Pulang (1 jam sebelum pulang & saat jam pulang)
+  // 1. Pengingat Absen Masuk (1 jam sebelum jam shift dimulai jika belum absen)
   const currentShift = shift || attendanceToday?.shift || dashboard?.today?.shift;
   const attendance = attendanceToday?.attendance || dashboard?.today?.attendance;
   const hasIn = !!attendance?.clock_in;
   const hasOut = !!attendance?.clock_out;
 
+  if (currentShift?.start_time && !hasIn) {
+    const [startHour, startMin] = currentShift.start_time.split(':').map(Number);
+    const now = new Date();
+    const oneHourBeforeIn = new Date();
+    oneHourBeforeIn.setHours(startHour - 1, startMin || 0, 0, 0);
+
+    if (oneHourBeforeIn.getTime() > now.getTime()) {
+      out.push({
+        key: `checkin-remind-1h-${today.toISOString().slice(0, 10)}`,
+        date: oneHourBeforeIn,
+        title: '⏰ 1 Jam Menuju Jam Masuk Kerja',
+        message: `Shift ${currentShift.name ? currentShift.name + ' ' : ''}dimulai pukul ${currentShift.start_time.slice(0, 5)} WIB. Bersiaplah untuk melakukan absen masuk di GGC Work!`,
+        type: 'checkin',
+      });
+    }
+  }
+
+  // 2. Pengingat Absen Pulang (1 jam sebelum, tepat waktu, lalu 30m setelah pulang & diulang tiap 5 menit s.d. 2x)
   if (currentShift?.end_time && hasIn && !hasOut) {
     const [endHour, endMin] = currentShift.end_time.split(':').map(Number);
     const now = new Date();
@@ -291,18 +309,41 @@ export function buildSchedules({ dashboard, profile, attendanceToday, shift }) {
       });
     }
 
-    // 30 menit setelah jam pulang (bila belum absen)
-    const thirtyMinAfter = new Date();
-    thirtyMinAfter.setHours(endHour, (endMin || 0) + 30, 0, 0);
-    if (thirtyMinAfter.getTime() > now.getTime()) {
-      out.push({
-        key: `checkout-remind-after-${today.toISOString().slice(0, 10)}`,
-        date: thirtyMinAfter,
+    // 30 menit setelah pulang, lalu berulang tiap 5 menit sebanyak 2 kali (+35m dan +40m)
+    const repeatReminders = [
+      {
+        offset: 30,
+        suffix: '30m',
         title: '⚠️ Pengingat Presensi Pulang',
-        message: `Anda belum melakukan presensi pulang hari ini. Buka GGC Work sekarang untuk melakukan absen pulang.`,
-        type: 'checkout',
-      });
-    }
+        message: 'Shift kerja Anda telah selesai 30 menit yang lalu. Jangan lupa lakukan absen pulang sekarang!',
+      },
+      {
+        offset: 35,
+        suffix: '35m',
+        title: '⚠️ Pengingat Presensi Pulang (Ke-2)',
+        message: 'Pengingat kedua: Anda belum melakukan absen pulang. Segera absen pulang sebelum meninggalkan area kerja.',
+      },
+      {
+        offset: 40,
+        suffix: '40m',
+        title: '🚨 Pengingat Presensi Pulang Terakhir',
+        message: 'Pengingat terakhir: Status presensi Anda hari ini belum tercatat pulang. Buka GGC Work untuk absen pulang!',
+      },
+    ];
+
+    repeatReminders.forEach((r) => {
+      const remindDate = new Date();
+      remindDate.setHours(endHour, (endMin || 0) + r.offset, 0, 0);
+      if (remindDate.getTime() > now.getTime()) {
+        out.push({
+          key: `checkout-remind-${r.suffix}-${today.toISOString().slice(0, 10)}`,
+          date: remindDate,
+          title: r.title,
+          message: r.message,
+          type: 'checkout',
+        });
+      }
+    });
   }
 
   // 2. Pengingat Kontrak Kerja

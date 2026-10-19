@@ -31,7 +31,7 @@ import PlaceholderScreen from './src/screens/PlaceholderScreen';
 import PoinScreen from './src/screens/PoinScreen';
 import PengumumanScreen from './src/screens/PengumumanScreen';
 import ChangePasswordScreen from './src/screens/ChangePasswordScreen';
-import { logout, getPage, loadCookieJar } from './src/api';
+import { logout, getPage, loadCookieJar, setUnauthorizedCallback } from './src/api';
 import { colors } from './src/theme';
 import { computeNotifications, unreadCounts } from './src/notifications';
 import { loadLastSeen, saveLastSeen } from './src/notifStore';
@@ -195,15 +195,41 @@ function Main() {
       }
       setInitializing(false);
 
-      // Cold-start: check if user tapped download notification while app was killed
+      // Cold-start: check if user tapped notification while app was killed
       safeNotif((mod) => mod.getLastNotificationResponseAsync().then((resp) => {
         const d = resp?.notification?.request?.content?.data;
-        if (d?.action === 'OPEN_DOWNLOAD') {
+        if (d?.action === 'FORCE_LOGOUT' || d?.type === 'FORCE_LOGOUT') {
+          handleLogout(true);
+        } else if (d?.action === 'OPEN_DOWNLOAD') {
           openLastDownload();
         }
       })).catch(() => {});
     })();
+  }, [handleLogout]);
+
+  const handleLogout = useCallback(async (forced = false) => {
+    try {
+      await logout();
+    } catch (e) {
+      // tetap lanjut keluar
+    }
+    clearPageCache();
+    disconnectHt();
+    setUser(null);
+    setDashData(null);
+    setProfile(null);
+    setPosts([]);
+    setRooms([]);
+    setTab('dashboard');
+    chatLoadedRef.current = false;
+    if (forced) {
+      Alert.alert('Sesi Dihentikan', 'Sesi login Anda di GGC Work telah dihentikan oleh Administrator. Silakan login kembali.');
+    }
   }, []);
+
+  useEffect(() => {
+    setUnauthorizedCallback(() => handleLogout(true));
+  }, [handleLogout]);
 
   // Android back button: go back or exit
   useEffect(() => {
@@ -296,12 +322,16 @@ function Main() {
     }
   }, [user, dashData, profile]);
 
-  // Foreground notification vibration listener
+  // Foreground notification vibration & force logout listener
   useEffect(() => {
     let sub = null;
     safeNotif((mod) => {
       sub = mod.addNotificationReceivedListener((notification) => {
         const data = notification?.request?.content?.data;
+        if (data?.action === 'FORCE_LOGOUT' || data?.type === 'FORCE_LOGOUT') {
+          handleLogout(true);
+          return;
+        }
         if (data?.action === 'PING_LOCATION' || data?.type === 'PING_LOCATION') return;
         try {
           Vibration.vibrate([0, 300, 150, 300]);
@@ -311,7 +341,7 @@ function Main() {
     return () => {
       if (sub?.remove) sub.remove();
     };
-  }, []);
+  }, [handleLogout]);
 
   // Handle notification tap: navigate to chat / announcement / checkout / downloads
   useEffect(() => {
@@ -320,6 +350,10 @@ function Main() {
     safeNotif((mod) => {
       const sub = mod.addNotificationResponseReceivedListener((response) => {
         const data = response?.notification?.request?.content?.data;
+        if (data?.action === 'FORCE_LOGOUT' || data?.type === 'FORCE_LOGOUT') {
+          handleLogout(true);
+          return;
+        }
         if (data?.action === 'CHAT_MESSAGE' || data?.type === 'CHAT_MESSAGE') {
           const senderId = parseInt(data.sender_id, 10);
           if (senderId) {
@@ -346,7 +380,7 @@ function Main() {
           setSubScreen('pengumuman');
           setTab('dashboard');
         }
-        if (data?.action === 'CHECKOUT' || data?.type === 'checkout') {
+        if (data?.action === 'CHECKOUT' || data?.type === 'checkout' || data?.action === 'ATTENDANCE_CHECKOUT_REMINDER' || data?.action === 'ATTENDANCE_CHECKIN_REMINDER' || data?.type === 'checkin' || data?.type === 'attendance') {
           setSubScreen(null);
           setTab('absen');
         }
@@ -357,7 +391,7 @@ function Main() {
       subUnsub = () => sub.remove();
     });
     return () => { if (subUnsub) subUnsub(); };
-  }, [user]);
+  }, [user, handleLogout]);
 
   // Badge sync: update OS badge count dari unread
   useEffect(() => {
@@ -424,23 +458,6 @@ function Main() {
     .map((w) => w[0])
     .join('')
     .toUpperCase();
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (e) {
-      // tetap lanjut keluar
-    }
-    clearPageCache();
-    disconnectHt();
-    setUser(null);
-    setDashData(null);
-    setProfile(null);
-    setPosts([]);
-    setRooms([]);
-    setTab('dashboard');
-    chatLoadedRef.current = false;
-  };
 
   const markCurhatRead = () => {
     if (!posts.length) return;

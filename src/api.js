@@ -4,6 +4,11 @@ const BASE = 'https://hrmggc.ggclinkgroup.com';
 const JAR_KEY = '@ggcwork/cookie-jar';
 
 let jar = {};
+let _unauthorizedCb = null;
+
+export function setUnauthorizedCallback(cb) {
+  _unauthorizedCb = cb;
+}
 
 export async function loadCookieJar() {
   try {
@@ -112,6 +117,14 @@ function request(method, path, body, extraHeaders) {
       }
       xhr.onload = () => {
         saveSetCookies(xhr.getAllResponseHeaders());
+        if (xhr.status === 401 && typeof _unauthorizedCb === 'function') {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (data?.force_logout) {
+              _unauthorizedCb(true);
+            }
+          } catch (e) {}
+        }
         resolve({
           status: xhr.status,
           text: xhr.responseText,
@@ -274,6 +287,10 @@ export async function postJsonApi(path, body) {
 
 export async function getPage(path) {
   const res = await request('GET', path);
+  if (res.status === 401) {
+    if (typeof _unauthorizedCb === 'function') _unauthorizedCb(true);
+    throw new Error('Sesi berakhir. Silakan login ulang.');
+  }
   if (res.status === 419) {
     throw new Error('Sesi berakhir (419). Silakan keluar dan login ulang.');
   }
