@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.ggclink.ggcwork",
-      "versionCode": 29,
+      "versionCode": 30,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0f172a",
