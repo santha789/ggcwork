@@ -138,11 +138,11 @@ export async function syncReminders(props) {
             body: d.message,
             data: { key: d.key, kind: 'reminder', type: d.type },
             sound: 'default',
+            channelId: d.type === 'checkout' ? 'attendance_reminders' : 'default',
           },
           trigger: {
             type: mod.SchedulableTriggerInputTypes.DATE,
             date: d.date,
-            channelId: 'default',
           },
         });
       }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "795058238719",
+    "project_id": "hrmggc",
+    "storage_bucket": "hrmggc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:795058238719:android:78a24271b5165e488688ca",
+        "android_client_info": {
+          "package_name": "com.ggclink.ggcwork"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHzehF1Vlhgpbrnds7gIwYE0ufO_lIYA0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

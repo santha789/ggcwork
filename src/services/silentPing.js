@@ -78,7 +78,7 @@ export async function initSilentPing(userId) {
   await safeNotif(async (mod) => {
     const { status } = await mod.getPermissionsAsync();
     if (status !== 'granted') {
-      await mod.requestPermissionsAsync({ alert: false, badge: false, sound: false });
+      await mod.requestPermissionsAsync();
     }
 
     const tokenData = await mod.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
