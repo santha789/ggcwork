@@ -257,8 +257,11 @@ export async function changePassword(current, password) {
   throw new Error('Ganti password gagal (status ' + res.status + ').');
 }
 
-export async function getJsonApi(path) {
-  const res = await request('GET', path, null, { Accept: 'application/json' });
+export async function getJsonApi(path, extraHeaders) {
+  const res = await request('GET', path, null, {
+    Accept: 'application/json',
+    ...(extraHeaders || {}),
+  });
   if (res.status === 401) {
     const err = new Error('Sesi berakhir. Silakan login ulang.');
     err.unauthorized = true;
@@ -271,8 +274,11 @@ export async function getJsonApi(path) {
   }
 }
 
-export async function postJsonApi(path, body) {
-  const res = await request('POST', path, body, { Accept: 'application/json' });
+export async function postJsonApi(path, body, extraHeaders) {
+  const res = await request('POST', path, body, {
+    Accept: 'application/json',
+    ...(extraHeaders || {}),
+  });
   if (res.status === 401) {
     const err = new Error('Sesi berakhir. Silakan login ulang.');
     err.unauthorized = true;

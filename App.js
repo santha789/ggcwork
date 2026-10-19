@@ -101,11 +101,15 @@ function Main() {
         } else if (data.action === 'OFFICIAL_ANNOUNCEMENT' || data.type === 'OFFICIAL_ANNOUNCEMENT') {
           setSubScreen('pengumuman');
         } else if (data.action === 'CHAT_MESSAGE' || data.type === 'CHAT_MESSAGE') {
-          if (data.room_id) setChatTarget(data.room_id);
+          const roomId = data.room_id ? parseInt(data.room_id, 10) : null;
+          const senderId = data.sender_id ? parseInt(data.sender_id, 10) : null;
+          setChatTarget({ roomId, senderId });
+          setCurhatTarget(null);
           setSubScreen(null);
           setTab('chat');
         } else if (data.action === 'CURHAT_NEW' || data.action === 'CURHAT_COMMENT' || data.type === 'curhat') {
-          if (data.post_id) setCurhatTarget(data.post_id);
+          if (data.post_id) setCurhatTarget(parseInt(data.post_id, 10));
+          setChatTarget(null);
           setSubScreen(null);
           setTab('curhat');
         }
@@ -367,15 +371,14 @@ function Main() {
           return;
         }
         if (data?.action === 'CHAT_MESSAGE' || data?.type === 'CHAT_MESSAGE') {
-          const senderId = parseInt(data.sender_id, 10);
-          if (senderId) {
-            setChatTarget(senderId);
-            setCurhatTarget(null);
-            setSubScreen(null);
-            setTab('chat');
-          }
+          const roomId = data.room_id ? parseInt(data.room_id, 10) : null;
+          const senderId = data.sender_id ? parseInt(data.sender_id, 10) : null;
+          setChatTarget({ roomId, senderId });
+          setCurhatTarget(null);
+          setSubScreen(null);
+          setTab('chat');
         }
-        if (data?.action === 'CURHAT_NEW' || data?.type === 'curhat') {
+        if (data?.action === 'CURHAT_NEW' || data?.action === 'CURHAT_COMMENT' || data?.type === 'curhat') {
           const postId = parseInt(data.post_id, 10) || null;
           setCurhatTarget(postId);
           setChatTarget(null);

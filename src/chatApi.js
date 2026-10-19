@@ -1,31 +1,44 @@
 import { getJsonApi, postJsonApi } from './api';
+import { getStoredToken } from './attendanceApi';
+
+async function authHeaders() {
+  const token = await getStoredToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export async function getChatRooms() {
-  return getJsonApi('/api/v1/chat/rooms');
+  const h = await authHeaders();
+  return getJsonApi('/api/v1/chat/rooms', h);
 }
 
 export async function getChatMessages(roomId, afterId = null) {
   const query = afterId ? `?after_id=${afterId}` : '';
-  return getJsonApi(`/api/v1/chat/rooms/${roomId}/messages${query}`);
+  const h = await authHeaders();
+  return getJsonApi(`/api/v1/chat/rooms/${roomId}/messages${query}`, h);
 }
 
 export async function sendChatMessage(roomId, content) {
-  return postJsonApi(`/api/v1/chat/rooms/${roomId}/send`, { content });
+  const h = await authHeaders();
+  return postJsonApi(`/api/v1/chat/rooms/${roomId}/send`, { content }, h);
 }
 
 export async function markChatRead(roomId) {
-  return postJsonApi(`/api/v1/chat/rooms/${roomId}/read`, {});
+  const h = await authHeaders();
+  return postJsonApi(`/api/v1/chat/rooms/${roomId}/read`, {}, h);
 }
 
 export async function startPrivateChat(targetUserId) {
-  return postJsonApi('/api/v1/chat/start', { target_user_id: targetUserId });
+  const h = await authHeaders();
+  return postJsonApi('/api/v1/chat/start', { target_user_id: targetUserId }, h);
 }
 
 export async function getChatUsers(query = '') {
   const q = query ? `?q=${encodeURIComponent(query)}` : '';
-  return getJsonApi(`/api/v1/chat/users${q}`);
+  const h = await authHeaders();
+  return getJsonApi(`/api/v1/chat/users${q}`, h);
 }
 
 export async function getNotificationsSummary() {
-  return getJsonApi('/api/v1/notifications/summary');
+  const h = await authHeaders();
+  return getJsonApi('/api/v1/notifications/summary', h);
 }

@@ -186,7 +186,13 @@ export default function ChatScreen({
   useEffect(() => {
     if (target && !targetHandled.current) {
       targetHandled.current = true;
-      if (typeof target === 'number') {
+      if (typeof target === 'object' && target !== null) {
+        if (target.roomId) {
+          openRoom({ id: target.roomId, type: 'private' });
+        } else if (target.senderId) {
+          openChatWithUser(target.senderId);
+        }
+      } else if (typeof target === 'number') {
         openChatWithUser(target);
       }
       if (onTargetConsumed) onTargetConsumed();
@@ -607,14 +613,34 @@ export default function ChatScreen({
       {activeTab === 'rooms' ? (
         filteredRooms.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <MaterialIcons name="chat-bubble-outline" size={54} color={colors.muted} />
-            <Text style={styles.emptyTitle}>Belum Ada Obrolan</Text>
-            <Text style={styles.emptySubtitle}>
-              Pilih tab "Karyawan" untuk memulai obrolan baru dengan rekan kerja.
+            <MaterialIcons
+              name={searchQuery ? 'search-off' : 'chat-bubble-outline'}
+              size={54}
+              color={colors.muted}
+            />
+            <Text style={styles.emptyTitle}>
+              {searchQuery ? 'Tidak Ada Obrolan Sesuai' : 'Belum Ada Obrolan'}
             </Text>
+            <Text style={styles.emptySubtitle}>
+              {searchQuery
+                ? `Tidak ditemukan obrolan dengan kata kunci "${searchQuery}".`
+                : 'Pilih tab "Karyawan" untuk memulai obrolan baru dengan rekan kerja.'}
+            </Text>
+            {searchQuery && filteredContacts.length > 0 ? (
+              <TouchableOpacity
+                style={styles.switchTabBtn}
+                onPress={() => setActiveTab('contacts')}
+              >
+                <MaterialIcons name="people" size={16} color="#fff" />
+                <Text style={styles.switchTabBtnText}>
+                  Cari di Daftar Karyawan ({filteredContacts.length}) ›
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : (
           <FlatList
+            style={{ flex: 1 }}
             data={filteredRooms}
             keyExtractor={(item) => String(item.id)}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
@@ -675,36 +701,55 @@ export default function ChatScreen({
         )
       ) : (
         /* Contacts Directory Tab */
-        <FlatList
-          data={filteredContacts}
-          keyExtractor={(item) => String(item.id)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-          contentContainerStyle={styles.roomsList}
-          renderItem={({ item }) => {
-            return (
-              <TouchableOpacity
-                style={styles.contactCard}
-                onPress={() => openChatWithUser(item.id)}
-                activeOpacity={0.7}
-              >
-                <Avatar name={item.fullname} online={item.is_online} size={46} bgColor={colors.cardAlt} />
+        filteredContacts.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <MaterialIcons
+              name={searchQuery ? 'search-off' : 'people-outline'}
+              size={54}
+              color={colors.muted}
+            />
+            <Text style={styles.emptyTitle}>
+              {searchQuery ? 'Karyawan Tidak Ditemukan' : 'Belum Ada Karyawan'}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {searchQuery
+                ? `Tidak ditemukan karyawan dengan nama atau NIK "${searchQuery}".`
+                : 'Tidak ada data kontak rekan kerja saat ini.'}
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            style={{ flex: 1 }}
+            data={filteredContacts}
+            keyExtractor={(item) => String(item.id)}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+            contentContainerStyle={styles.roomsList}
+            renderItem={({ item }) => {
+              return (
+                <TouchableOpacity
+                  style={styles.contactCard}
+                  onPress={() => openChatWithUser(item.id)}
+                  activeOpacity={0.7}
+                >
+                  <Avatar name={item.fullname} online={item.is_online} size={46} bgColor={colors.cardAlt} />
 
-                <View style={styles.contactCenter}>
-                  <Text style={styles.contactName} numberOfLines={1}>
-                    {item.fullname}
-                  </Text>
-                  <Text style={styles.contactSubDiv} numberOfLines={1}>
-                    {item.sub_division} • {item.position}
-                  </Text>
-                </View>
+                  <View style={styles.contactCenter}>
+                    <Text style={styles.contactName} numberOfLines={1}>
+                      {item.fullname}
+                    </Text>
+                    <Text style={styles.contactSubDiv} numberOfLines={1}>
+                      {item.sub_division} • {item.position}
+                    </Text>
+                  </View>
 
-                <View style={styles.chatActionBtn}>
-                  <MaterialIcons name="send" size={16} color={colors.accentLight} />
-                </View>
-              </TouchableOpacity>
-            );
-          }}
-        />
+                  <View style={styles.chatActionBtn}>
+                    <MaterialIcons name="send" size={16} color={colors.accentLight} />
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        )
       )}
     </View>
   );
@@ -933,6 +978,21 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  switchTabBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  switchTabBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 
   // =========================
